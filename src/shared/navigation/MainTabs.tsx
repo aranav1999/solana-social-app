@@ -284,31 +284,7 @@ export default function MainTabs() {
             ),
           }}
         />
-        <Tab.Screen
-          name="Modules"
-          component={ModuleScreen}
-          options={{
-            tabBarIcon: ({ focused, size }) => (
-              <AnimatedTabIcon
-                focused={focused}
-                size={size * 1.2}
-                icon={
-                  Icons.RocketIcon as React.ComponentType<{
-                    width: number;
-                    height: number;
-                  }>
-                }
-                iconSelected={
-                  Icons.RocketIconSelected as React.ComponentType<{
-                    width: number;
-                    height: number;
-                  }>
-                }
-                style={iconStyle}
-              />
-            ),
-          }}
-        />
+       
       </Tab.Navigator>
     </>
   );

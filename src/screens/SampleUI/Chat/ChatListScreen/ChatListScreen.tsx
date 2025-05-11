@@ -64,14 +64,6 @@ const formatRelativeTime = (dateString: string) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// AI Agent chat hardcoded image and initial message
-const AI_AGENT = {
-  id: 'ai-agent',
-  name: 'AI Assistant',
-  avatar: DEFAULT_IMAGES.user, // Use default user image instead of SVG
-  initialMessage: "Hey! I'm your AI assistant. I can help you with various tasks like buying/selling tokens, swapping tokens, or providing information about your wallet. How can I assist you today?"
-};
-
 /**
  * ChatListScreen component - Entry point for the chat feature
  * Shows available chats and allows searching for users
@@ -270,58 +262,8 @@ const ChatListScreen: React.FC = () => {
     return usersForChat.length > 0 ? usersForChat.length : 128;
   }, [usersForChat]);
 
-  // Handle AI agent chat
-  const handleAIAgentChat = useCallback(() => {
-    navigation.navigate('ChatScreen', {
-      chatId: AI_AGENT.id,
-      chatName: AI_AGENT.name,
-      isGroup: false
-    });
-  }, [navigation]);
-
   // Prepare all chats - both API chats and the special global chat
   const prepareChats = useCallback(() => {
-    // Create AI Agent chat
-    const aiAgentChat = {
-      id: AI_AGENT.id,
-      name: AI_AGENT.name,
-      lastMessage: {
-        content: "How can I assist you today?",
-        sender: { username: 'AI' },
-        created_at: new Date().toISOString(),
-      },
-      time: 'now',
-      type: 'ai' as const,
-      is_active: true,
-      participants: [],
-      created_at: '',
-      updated_at: '',
-      unreadCount: 0,
-      avatar: AI_AGENT.avatar,
-    };
-
-    // Create global chat item - commented out as requested
-    /*
-    const globalChat = {
-      id: 'global',
-      name: 'Global Community',
-      lastMessage: {
-        content: getGlobalChatLastMessage(),
-        sender: { username: '' },
-        created_at: new Date().toISOString(),
-      },
-      time: getGlobalChatTime(),
-      type: 'global' as const,
-      is_active: true,
-      participants: [],
-      created_at: '',
-      updated_at: '',
-      unreadCount: Math.min(allPosts.length, 5),
-      avatar: DEFAULT_IMAGES.groupChat,
-      memberCount: getTotalUserCount(), // Add the total user count
-    };
-    */
-
     // Filter and format API chats
     const apiChats = sortedChats.map(chat => {
       // Get other participant for direct chats (for name and avatar)
@@ -380,9 +322,9 @@ const ChatListScreen: React.FC = () => {
       };
     });
 
-    return [aiAgentChat, ...apiChats];
+    return [...apiChats];
 
-  }, [sortedChats, userId, getGlobalChatLastMessage, getGlobalChatTime, getTotalUserCount]);
+  }, [sortedChats, userId]);
 
   // Filter chats based on search query
   const filteredChats = searchQuery
@@ -393,11 +335,6 @@ const ChatListScreen: React.FC = () => {
 
   // Handle chat item press - navigate to ChatScreen
   const handleChatPress = useCallback((chat: any) => {
-    if (chat.id === AI_AGENT.id) {
-      handleAIAgentChat();
-      return;
-    }
-
     // Reset the unread counter when selecting a chat
     dispatch(setSelectedChat(chat.id));
 
@@ -406,7 +343,7 @@ const ChatListScreen: React.FC = () => {
       chatName: chat.name,
       isGroup: chat.type !== 'direct'
     });
-  }, [navigation, handleAIAgentChat, dispatch]);
+  }, [navigation, dispatch]);
 
   // Handle new chat button press
   const handleNewChat = useCallback(() => {
@@ -422,7 +359,6 @@ const ChatListScreen: React.FC = () => {
   const renderChatItem = ({ item }: { item: any }) => {
     // Detect if this is a direct chat
     const isDirect = item.type === 'direct';
-    const isAI = item.id === AI_AGENT.id;
 
     // For direct chats, check online status and get participant info
     let isOnline = false;
@@ -443,18 +379,7 @@ const ChatListScreen: React.FC = () => {
       }
     }
 
-    if (isAI) {
-      isOnline = true;
-      participantUser = {
-        id: AI_AGENT.id,
-        username: AI_AGENT.name,
-        handle: 'ai-assistant',
-        avatar: getValidImageSource(AI_AGENT.avatar),
-        verified: true,
-      };
-    }
-
-    if (!participantUser && !isDirect && !isAI) {
+    if (!participantUser && !isDirect) {
       participantUser = {
         id: item.id,
         username: item.name,
@@ -484,7 +409,7 @@ const ChatListScreen: React.FC = () => {
             style={styles.avatar}
             size={styles.avatar.width}
           />
-          {!isDirect && !isAI ? (
+          {!isDirect ? (
             <View style={styles.groupIndicator}>
               <Icons.ProfilePlusIcon width={12} height={12} color={COLORS.white} />
             </View>
@@ -501,7 +426,7 @@ const ChatListScreen: React.FC = () => {
                 <Text style={styles.memberCount}>
                   {item.memberCount} members
                 </Text>
-              ) : item.type !== 'direct' && item.id !== AI_AGENT.id && (
+              ) : item.type !== 'direct' && (
                 <Text style={styles.memberCount}>
                   {item.participants ? `${item.participants.length} members` : 'Group chat'}
                 </Text>
