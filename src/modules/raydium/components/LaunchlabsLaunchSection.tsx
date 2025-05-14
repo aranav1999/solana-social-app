@@ -36,6 +36,8 @@ export interface TokenData {
     twitter?: string;
     telegram?: string;
     website?: string;
+    initialBuyEnabled?: boolean; // Whether to execute initial buy
+    initialBuyAmount?: string; // Amount of SOL for initial buy
 }
 
 export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = ({
@@ -55,9 +57,16 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    
+    // Add state for initial buy options
+    const [initialBuyEnabled, setInitialBuyEnabled] = useState(true);
+    const [initialBuyAmount, setInitialBuyAmount] = useState('1'); // Default to 1 SOL
 
     // Add a new state variable to track whether social fields are visible
     const [showSocials, setShowSocials] = useState(false);
+
+    // Add a state for the image URL input
+    const [imageUrlInput, setImageUrlInput] = useState('');
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -71,6 +80,19 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
 
     const removeImage = () => {
         setImageUri(null);
+    };
+
+    // Add a function to handle setting the image from URL
+    const setImageFromUrl = () => {
+        if (imageUrlInput && (
+            imageUrlInput.startsWith('http://') || 
+            imageUrlInput.startsWith('https://') ||
+            imageUrlInput.startsWith('ipfs://')
+        )) {
+            setImageUri(imageUrlInput);
+        } else {
+            Alert.alert('Invalid URL', 'Please enter a valid URL starting with http://, https://, or ipfs://');
+        }
     };
 
     const validateForm = (): boolean => {
@@ -94,6 +116,14 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
             return false;
         }
         
+        if (initialBuyEnabled) {
+            const buyAmount = parseFloat(initialBuyAmount);
+            if (isNaN(buyAmount) || buyAmount <= 0) {
+                Alert.alert('Error', 'Please enter a valid amount for initial buy');
+                return false;
+            }
+        }
+        
         return true;
     };
 
@@ -115,10 +145,19 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                 imageUri,
                 twitter: twitter || undefined,
                 telegram: telegram || undefined,
-                website: website || undefined
+                website: website || undefined,
+                initialBuyEnabled: initialBuyEnabled,
+                initialBuyAmount: initialBuyAmount
             };
             
-            // Use a preset configuration for JustSendIt mode (as per docs)
+            // In JustSendIt mode, we use the following default settings:
+            // - Token supply: 1 billion tokens (1,000,000,000)
+            // - SOL raised: 85 SOL threshold for migrating to AMM pool
+            // - Bonding curve percentage: 50% of tokens on curve
+            // - Pool migration: 30 SOL threshold
+            // - No vesting
+            // - createOnly: false (will create token AND execute initial buy)
+            
             if (onJustSendIt) {
                 onJustSendIt(tokenData);
             } else {
@@ -146,7 +185,9 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                 imageUri,
                 twitter: twitter || undefined,
                 telegram: telegram || undefined,
-                website: website || undefined
+                website: website || undefined,
+                initialBuyEnabled: initialBuyEnabled,
+                initialBuyAmount: initialBuyAmount
             };
             
             // Pass the token data to the parent component for advanced configuration
@@ -203,10 +244,16 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                 <View style={styles.imageUploadContainer}>
                     {imageUri ? (
                         <View style={styles.imagePreviewContainer}>
-                            <Image
-                                source={{ uri: imageUri }}
-                                style={styles.imagePreview}
-                            />
+                            {imageUri.startsWith('http') || imageUri.startsWith('ipfs') ? (
+                                <View style={styles.imageUrlPreview}>
+                                    <Text style={styles.imageUrlText}>{imageUri}</Text>
+                                </View>
+                            ) : (
+                                <Image
+                                    source={{ uri: imageUri }}
+                                    style={styles.imagePreview}
+                                />
+                            )}
                             <View style={styles.imageControlsContainer}>
                                 <TouchableOpacity
                                     style={styles.imageControlButton}
@@ -244,7 +291,7 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                                 </View>
                             </View>
                             <Text style={styles.uploadText}>
-                                drag and drop an image or video
+                                drag and drop or enter image URL
                             </Text>
                             <TouchableOpacity
                                 onPress={pickImage}
@@ -252,6 +299,24 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                                 disabled={loading}>
                                 <Text style={styles.selectFileText}>select file</Text>
                             </TouchableOpacity>
+                            
+                            <View style={styles.imageUrlInputContainer}>
+                                <Text style={styles.orText}>OR</Text>
+                                <TextInput
+                                    style={[styles.input, inputStyle]}
+                                    placeholder="Enter image URL (https://... or ipfs://...)"
+                                    placeholderTextColor={COLORS.greyMid}
+                                    value={imageUrlInput}
+                                    onChangeText={setImageUrlInput}
+                                    editable={!loading}
+                                />
+                                <TouchableOpacity
+                                    onPress={setImageFromUrl}
+                                    style={styles.urlButton}
+                                    disabled={loading}>
+                                    <Text style={styles.urlButtonText}>Use URL</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     )}
                 </View>
@@ -305,6 +370,49 @@ export const LaunchlabsLaunchSection: React.FC<LaunchlabsLaunchSectionProps> = (
                                 editable={!loading}
                             />
                         </View>
+                    </View>
+                )}
+            </View>
+
+            {/* Add initial buy options with better UI */}
+            <View style={styles.verificationSection}>
+                <Text style={styles.verificationTitle}>Initial Buy Options</Text>
+                
+                <View style={styles.switchRow}>
+                    <View style={styles.switchLabelContainer}>
+                        <Text style={styles.switchLabel}>Execute Initial Buy</Text>
+                        <Text style={styles.switchDescription}>
+                            Automatically purchase tokens after creation
+                        </Text>
+                    </View>
+                    <Switch
+                        value={initialBuyEnabled}
+                        onValueChange={setInitialBuyEnabled}
+                        trackColor={{
+                            false: COLORS.darkerBackground,
+                            true: COLORS.brandBlue,
+                        }}
+                        thumbColor={COLORS.white}
+                        style={styles.switchControl}
+                        disabled={loading}
+                    />
+                </View>
+                
+                {initialBuyEnabled && (
+                    <View style={styles.verificationOptionsContainer}>
+                        <Text style={styles.fieldLabel}>Initial Buy Amount (SOL)</Text>
+                        <TextInput
+                            style={[styles.input, inputStyle]}
+                            placeholder="1.0"
+                            placeholderTextColor={COLORS.greyMid}
+                            value={initialBuyAmount}
+                            onChangeText={setInitialBuyAmount}
+                            keyboardType="numeric"
+                            editable={!loading}
+                        />
+                        <Text style={styles.switchDescription}>
+                            This amount of SOL will be used for your initial token purchase
+                        </Text>
                     </View>
                 )}
             </View>
@@ -552,6 +660,44 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.md,
         fontWeight: TYPOGRAPHY.fontWeightToString(TYPOGRAPHY.semiBold),
         fontFamily: TYPOGRAPHY.fontFamily,
+    },
+    imageUrlInputContainer: {
+        marginTop: 16,
+        width: '100%',
+    },
+    orText: {
+        color: COLORS.greyMid,
+        fontSize: TYPOGRAPHY.size.sm,
+        textAlign: 'center',
+        marginBottom: 8,
+        fontFamily: TYPOGRAPHY.fontFamily,
+    },
+    urlButton: {
+        backgroundColor: COLORS.brandBlue,
+        paddingVertical: 8,
+        paddingHorizontal: 24,
+        borderRadius: 4,
+        marginTop: 8,
+        alignSelf: 'center',
+    },
+    urlButtonText: {
+        color: COLORS.white,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontFamily: TYPOGRAPHY.fontFamily,
+    },
+    imageUrlPreview: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: COLORS.darkerBackground,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    imageUrlText: {
+        color: COLORS.white,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontFamily: TYPOGRAPHY.fontFamily,
+        textAlign: 'center',
     },
 });
 

@@ -558,7 +558,7 @@ export class MeteoraDBCService {
         createPoolParam: {
           payer: this.toPublicKey(params.createPoolParam.payer),
           poolCreator: this.toPublicKey(params.createPoolParam.poolCreator),
-          baseMint: this.toPublicKey(params.createPoolParam.baseMint),
+          baseMint: params.createPoolParam.baseMint ? this.toPublicKey(params.createPoolParam.baseMint) : null,
           quoteMint: this.toPublicKey(params.createPoolParam.quoteMint),
           config: this.toPublicKey(params.createPoolParam.config),
           baseTokenType: params.createPoolParam.baseTokenType,

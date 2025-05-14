@@ -26,6 +26,8 @@ import socketService from '@/shared/services/socketService';
 import { fetchUserChats } from '@/shared/state/chat/slice';
 import { useAppDispatch } from '@/shared/hooks/useReduxHooks';
 import { TokenInfo } from '@/modules/dataModule';
+import WebViewScreen from '@/screens/Common/WebViewScreen';
+import DeleteAccountConfirmationScreen from '@/screens/Common/DeleteAccountConfirmationScreen';
 
 export type RootStackParamList = {
   IntroScreen: undefined;
@@ -47,7 +49,6 @@ export type RootStackParamList = {
   MercuroScreen: undefined;
   LaunchlabsScreen: undefined;
   MeteoraScreen: undefined;
-  // NEW ROUTE
   OtherProfile: { userId: string };
   PostThread: { postId: string };
   FollowersFollowingList: undefined;
@@ -57,6 +58,8 @@ export type RootStackParamList = {
     walletBalance?: string;
   };
   OnrampScreen: undefined;
+  WebViewScreen: { uri: string; title: string };
+  DeleteAccountConfirmationScreen: undefined;
   SwapScreen: {
     inputToken?: Partial<TokenInfo>;
     outputToken?: {
@@ -167,6 +170,8 @@ export default function RootNavigator() {
           <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
           <Stack.Screen name="WalletScreen" component={WalletScreen} />
           <Stack.Screen name="OnrampScreen" component={OnrampScreen} />
+          <Stack.Screen name="WebViewScreen" component={WebViewScreen} />
+          <Stack.Screen name="DeleteAccountConfirmationScreen" component={DeleteAccountConfirmationScreen} />
           <Stack.Screen name="SwapScreen" component={SwapScreen} />
         </>
       );
@@ -183,7 +188,7 @@ export default function RootNavigator() {
   };
 
   return (
-    <Stack.Navigator 
+    <Stack.Navigator
       screenOptions={{ headerShown: false }}
       // When logged in, start at MainTabs; otherwise start at IntroScreen
       initialRouteName={isLoggedIn ? "MainTabs" : "IntroScreen"}

@@ -1,7 +1,8 @@
 import { Connection, clusterApiUrl, Cluster, PublicKey } from '@solana/web3.js';
 import { ENDPOINTS } from '../../../config/constants';
-import { CLUSTER, HELIUS_STAKED_URL } from '@env';
+import { CLUSTER, HELIUS_STAKED_URL, BIRDEYE_API_KEY } from '@env';
 import { TokenInfo } from '../types/tokenTypes';
+import { useCallback } from 'react';
 
 /**
  * Default token entries
@@ -27,8 +28,14 @@ export const DEFAULT_USDC_TOKEN: TokenInfo = {
  */
 export async function fetchTokenBalance(
   walletPublicKey: PublicKey,
-  tokenInfo: TokenInfo
+  tokenInfo: TokenInfo | null
 ): Promise<number | null> {
+  // Return null if token is null
+  if (!tokenInfo) {
+    console.error('[TokenService] Cannot fetch balance: Token info is null');
+    return null;
+  }
+
   try {
     const rpcUrl = HELIUS_STAKED_URL || ENDPOINTS.helius || clusterApiUrl(CLUSTER as Cluster);
     const connection = new Connection(rpcUrl, 'confirmed');
@@ -97,76 +104,63 @@ export async function fetchTokenBalance(
 /**
  * Fetches the price of a token
  */
-export async function fetchTokenPrice(tokenInfo: TokenInfo): Promise<number | null> {
+export async function fetchTokenPrice(tokenInfo: TokenInfo | null): Promise<number | null> {
+  // Return null if token is null
+  if (!tokenInfo) {
+    console.error('[TokenService] Cannot fetch price: Token info is null');
+    return null;
+  }
+
   try {
-    // Special case for SOL
-    if (
-      tokenInfo.symbol === 'SOL' ||
-      tokenInfo.address === 'So11111111111111111111111111111111111111112'
-    ) {
-      // Try CoinGecko first
-      try {
-        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-        const data = await response.json();
-        if (data && data.solana && data.solana.usd) {
-          return data.solana.usd;
-        }
-      } catch (err) {
-        console.log("Error fetching SOL price from CoinGecko", err);
+    console.log(`[TokenService] Fetching price for ${tokenInfo.symbol} (${tokenInfo.address})`);
+    
+    // Use Birdeye API to get token price
+    const response = await fetch(`https://public-api.birdeye.so/defi/v3/token/market-data?address=${tokenInfo.address}&chain=solana`, {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+        'X-API-KEY': BIRDEYE_API_KEY || ''
       }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[TokenService] Birdeye API error: ${response.status}, ${errorText}`);
+      console.log(`[TokenService] Failed to get Birdeye price for ${tokenInfo.symbol}, trying Jupiter as fallback`);
+    } else {
+      const data = await response.json();
       
-      // Fallback to a reasonable SOL price estimate if API fails
-      return 150; // Reasonable fallback for SOL
-    } 
-    
-    // Special case for stablecoins
-    if (
-      tokenInfo.symbol === 'USDC' ||
-      tokenInfo.address === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' ||
-      tokenInfo.symbol === 'USDT' ||
-      tokenInfo.address === 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
-    ) {
-      // Stablecoins are pegged to $1
-      return 1;
-    }
-    
-    // For other tokens, try multiple methods
-    
-    // Try CoinGecko by symbol
-    if (tokenInfo.symbol) {
-      try {
-        // Try direct symbol match
-        const coinId = tokenInfo.symbol.toLowerCase();
-        const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
-        const data = await response.json();
-        if (data && data[coinId] && data[coinId].usd) {
-          return data[coinId].usd;
-        }
-      } catch (err) {
-        console.log(`Error fetching ${tokenInfo.symbol} price from CoinGecko`, err);
+      if (data.success && data.data && typeof data.data.price === 'number') {
+        console.log(`[TokenService] Birdeye returned price for ${tokenInfo.symbol}: ${data.data.price}`);
+        return data.data.price;
+      } else {
+        console.log(`[TokenService] Birdeye API returned invalid price data:`, JSON.stringify(data));
       }
     }
     
-    // Try Jupiter API for price data
+    // If Birdeye fails, try Jupiter API as a last resort
     try {
-      const response = await fetch(`https://price.jup.ag/v4/price?ids=${tokenInfo.address}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.data?.[tokenInfo.address]?.price) {
-          return data.data[tokenInfo.address].price;
+      console.log(`[TokenService] Trying Jupiter as fallback for ${tokenInfo.symbol}`);
+      const jupResponse = await fetch(`https://price.jup.ag/v4/price?ids=${tokenInfo.address}`);
+      if (jupResponse.ok) {
+        const jupData = await jupResponse.json();
+        if (jupData?.data?.[tokenInfo.address]?.price) {
+          const price = jupData.data[tokenInfo.address].price;
+          console.log(`[TokenService] Jupiter returned price for ${tokenInfo.symbol}: ${price}`);
+          return price;
+        } else {
+          console.log(`[TokenService] Jupiter API returned invalid price data:`, JSON.stringify(jupData));
         }
       }
     } catch (err) {
-      console.log(`Error fetching ${tokenInfo.symbol} price from Jupiter`, err);
+      console.log(`[TokenService] Error fetching ${tokenInfo.symbol} price from Jupiter`, err);
     }
     
-    // As a last resort, return a very small price for unknown tokens
-    // This is better than returning null which would break the UI
-    console.log(`Using fallback price for ${tokenInfo.symbol}`);
-    return 0.01; // $0.01 as reasonable fallback
+    console.log(`[TokenService] Failed to get price for ${tokenInfo.symbol} from any source`);
+    return null;
   } catch (err) {
-    console.error('Error fetching token price:', err);
-    return 0.01; // Return fallback price instead of null
+    console.error('[TokenService] Error fetching token price:', err);
+    return null;
   }
 }
 
@@ -179,76 +173,31 @@ export async function estimateTokenUsdValue(
   tokenMint: string,
   tokenSymbol?: string
 ): Promise<string> {
-  // Default when all else fails - empty string
-  let result = '';
-
   try {
     // Convert to normalized amount
     const normalizedAmount = tokenAmount / Math.pow(10, decimals);
 
-    // SOL special case
-    if (
-      tokenMint === 'So11111111111111111111111111111111111111112' ||
-      tokenSymbol?.toUpperCase() === 'SOL'
-    ) {
-      try {
-        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-        const data = await response.json();
-        if (data && data.solana && data.solana.usd) {
-          const estimated = normalizedAmount * data.solana.usd;
-          return `$${estimated.toFixed(2)}`;
-        } else {
-          // Fallback if API fails
-          const estimated = normalizedAmount * 150;
-          return `$${estimated.toFixed(2)}`;
-        }
-      } catch (err) {
-        // Fallback on error
-        const estimated = normalizedAmount * 150;
-        return `$${estimated.toFixed(2)}`;
-      }
+    // Get token price using Birdeye API
+    const tokenInfo: TokenInfo = {
+      address: tokenMint,
+      symbol: tokenSymbol || '',
+      name: tokenSymbol || '',
+      decimals: decimals,
+      logoURI: ''
+    };
+    
+    const price = await fetchTokenPrice(tokenInfo);
+    
+    if (price && normalizedAmount > 0) {
+      const estimatedValue = normalizedAmount * price;
+      return `$${estimatedValue.toFixed(2)}`;
     }
-
-    // USDC, USDT case
-    if (
-      tokenMint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' || // USDC
-      tokenSymbol?.toUpperCase() === 'USDC' ||
-      tokenMint === 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' || // USDT
-      tokenSymbol?.toUpperCase() === 'USDT'
-    ) {
-      // Stablecoins - approximately $1
-      return `$${normalizedAmount.toFixed(2)}`;
-    }
-
-    // For all other tokens
-    try {
-      if (tokenSymbol) {
-        const coinId = tokenSymbol.toLowerCase();
-        const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
-        const data = await response.json();
-        if (data && data[coinId] && data[coinId].usd) {
-          const price = data[coinId].usd;
-          return `$${(normalizedAmount * price).toFixed(2)}`;
-        }
-      }
-    } catch (err) {
-      console.log("Error fetching token price from CoinGecko", err);
-    }
-
-    // Make a reasonable estimate for unknown tokens
-    if (normalizedAmount > 0) {
-      const estimatedValue = normalizedAmount * 0.01;
-      if (estimatedValue < 0.01) {
-        result = `<$0.01`;
-      } else {
-        result = `~$${estimatedValue.toFixed(2)}`;
-      }
-    }
+    
+    return '';
   } catch (err) {
     console.error('Error estimating token value:', err);
+    return '';
   }
-
-  return result;
 }
 
 /**
@@ -260,130 +209,351 @@ export function toBaseUnits(amount: string, decimals: number): number {
   return val * Math.pow(10, decimals);
 }
 
+// Birdeye token list API constants
+const BIRDEYE_BASE_URL = 'https://public-api.birdeye.so';
+const BIRDEYE_HEADERS = {
+  'accept': 'application/json',
+  'X-API-KEY': BIRDEYE_API_KEY || ''
+};
+
 /**
- * Fetches complete token metadata for a given token (either by address or symbol)
- * This is useful when only partial token info is available
+ * TokenListParams interface for Birdeye token list API
  */
-export async function fetchTokenMetadata(tokenAddress: string, tokenSymbol?: string): Promise<TokenInfo | null> {
+export interface TokenListParams {
+  sort_by?: string;
+  sort_type?: string;
+  offset?: number;
+  limit?: number;
+  min_liquidity?: number;
+}
+
+/**
+ * Token list item from Birdeye API
+ */
+export interface BirdeyeTokenItem {
+  address: string;
+  logo_uri: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  market_cap: number;
+  price: number;
+  liquidity: number;
+  volume_24h_usd: number;
+  price_change_24h_percent: number;
+  extensions?: {
+    website?: string;
+    twitter?: string;
+    discord?: string;
+    description?: string;
+  };
+}
+
+/**
+ * Fetches token list from Birdeye API
+ */
+export async function fetchTokenList(params: TokenListParams = {}): Promise<TokenInfo[]> {
   try {
-    // Check if this is SOL
-    if (tokenAddress === 'So11111111111111111111111111111111111111112' || 
-        tokenSymbol?.toUpperCase() === 'SOL') {
-      return DEFAULT_SOL_TOKEN;
+    // Default parameters for sorting by market cap high to low
+    const defaultParams = {
+      chain: 'solana', // Add chain as a query parameter
+      sort_by: 'market_cap',
+      sort_type: 'desc',
+      limit: 100,
+      offset: 0,
+    };
+    
+    const finalParams = { ...defaultParams, ...params };
+    
+    // Build query string
+    const queryParams = new URLSearchParams();
+    Object.entries(finalParams).forEach(([key, value]) => {
+      queryParams.append(key, value.toString());
+    });
+    
+    const url = `${BIRDEYE_BASE_URL}/defi/v3/token/list?${queryParams.toString()}`;
+    
+    console.log(`[TokenService] Fetching token list with URL: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: BIRDEYE_HEADERS
+    });
+    
+    if (!response.ok) {
+      // Log the error response for debugging
+      const errorText = await response.text();
+      console.error(`[TokenService] Birdeye API error: ${response.status}, ${errorText}`);
+      throw new Error(`Failed to fetch token list: ${response.status}`);
     }
-
-    // Check if this is USDC
-    if (tokenAddress === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' || 
-        tokenSymbol?.toUpperCase() === 'USDC') {
-      return DEFAULT_USDC_TOKEN;
+    
+    const data = await response.json();
+    
+    if (data.success && data.data && data.data.items) {
+      // Transform Birdeye tokens to TokenInfo format and ensure no null values
+      return data.data.items.map((item: BirdeyeTokenItem) => ({
+        address: item.address || '',
+        symbol: item.symbol || 'Unknown',
+        name: item.name || 'Unknown Token',
+        decimals: item.decimals !== undefined ? item.decimals : 9,
+        logoURI: item.logo_uri || '',
+        price: item.price || 0,
+        marketCap: item.market_cap || 0,
+        volume24h: item.volume_24h_usd || 0,
+        priceChange24h: item.price_change_24h_percent || 0,
+        liquidity: item.liquidity || 0
+      }));
     }
+    
+    return [];
+  } catch (error) {
+    console.error('Error fetching token list from Birdeye:', error);
+    return [];
+  }
+}
 
-    // Try to fetch from Jupiter API
-    try {
-      const response = await fetch(`https://api.jup.ag/tokens/v1/token/${tokenAddress}`);
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          address: data.address || tokenAddress,
-          symbol: data.symbol || tokenSymbol || 'Unknown',
-          name: data.name || data.symbol || 'Unknown Token',
-          decimals: data.decimals || 9,
-          logoURI: data.logoURI || ''
-        };
+/**
+ * Interface for Birdeye search API params
+ */
+export interface TokenSearchParams {
+  keyword: string;
+  sort_by?: string;
+  sort_type?: string;
+  target?: string;
+  search_mode?: string;
+  search_by?: string;
+  verify_token?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Searches for tokens using Birdeye search API
+ */
+export async function searchTokens(params: TokenSearchParams): Promise<TokenInfo[]> {
+  try {
+    if (!params.keyword || params.keyword.trim() === '') {
+      return [];
+    }
+    
+    // Default parameters based on API documentation
+    const defaultParams = {
+      chain: 'solana',
+      keyword: params.keyword, // Use the provided keyword
+      target: 'all',
+      search_mode: 'fuzzy', // Changed from 'exact' to 'fuzzy' for better name search
+      search_by: 'combination', // Changed from 'symbol' to 'both' to search by both name and symbol
+      sort_by: 'marketcap',
+      sort_type: 'desc',
+      verify_token: true,
+      offset: 0,
+      limit: 20
+    };
+    
+    // Remove keyword from params to avoid duplication
+    const { keyword, ...restParams } = params;
+    
+    const finalParams = { ...defaultParams, ...restParams };
+    
+    // Build query string
+    const queryParams = new URLSearchParams();
+    Object.entries(finalParams).forEach(([key, value]) => {
+      if (typeof value === 'boolean') {
+        queryParams.append(key, value ? 'true' : 'false');
+      } else if (value !== undefined && value !== null) {
+        queryParams.append(key, value.toString());
       }
-    } catch (err) {
-      console.log(`Error fetching token metadata for ${tokenAddress} from Jupiter`, err);
+    });
+    
+    const url = `${BIRDEYE_BASE_URL}/defi/v3/search?${queryParams.toString()}`;
+    
+    console.log(`[TokenService] Searching tokens with URL: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: BIRDEYE_HEADERS
+    });
+    
+    if (!response.ok) {
+      // Log the error response for debugging
+      const errorText = await response.text();
+      console.error(`[TokenService] Birdeye API error: ${response.status}, ${errorText}`);
+      throw new Error(`Failed to search tokens: ${response.status}`);
     }
-
-    // Try the token list API as fallback
-    try {
-      const response = await fetch('https://api.jup.ag/tokens/v1/tagged/verified');
-      if (response.ok) {
-        const tokens = await response.json();
-        // First try to find by address
-        const foundByAddress = tokens.find((t: any) => 
-          t.address?.toLowerCase() === tokenAddress.toLowerCase()
-        );
-        
-        if (foundByAddress) {
-          return {
-            address: foundByAddress.address,
-            symbol: foundByAddress.symbol,
-            name: foundByAddress.name || foundByAddress.symbol,
-            decimals: foundByAddress.decimals || 9,
-            logoURI: foundByAddress.logoURI || ''
-          };
-        }
-        
-        // If not found by address and we have a symbol, try by symbol
-        if (tokenSymbol) {
-          const foundBySymbol = tokens.find((t: any) => 
-            t.symbol?.toLowerCase() === tokenSymbol.toLowerCase()
-          );
-          
-          if (foundBySymbol) {
-            return {
-              address: tokenAddress, // Keep the original address
-              symbol: foundBySymbol.symbol,
-              name: foundBySymbol.name || foundBySymbol.symbol,
-              decimals: foundBySymbol.decimals || 9,
-              logoURI: foundBySymbol.logoURI || ''
-            };
-          }
-        }
+    
+    const data = await response.json();
+    
+    if (data.success && data.data && data.data.items) {
+      const tokens: TokenInfo[] = [];
+      
+      // Find the token results
+      const tokenResults = data.data.items.find((item: any) => item.type === 'token');
+      
+      if (tokenResults && tokenResults.result) {
+        // Transform Birdeye tokens to TokenInfo format and ensure no null values
+        return tokenResults.result.map((item: any) => ({
+          address: item.address || '',
+          symbol: item.symbol || 'Unknown',
+          name: item.name || 'Unknown Token',
+          decimals: item.decimals !== undefined ? item.decimals : 9,
+          logoURI: item.logo_uri || '',
+          price: item.price || 0,
+          marketCap: item.market_cap || 0,
+          volume24h: item.volume_24h_usd || 0,
+          priceChange24h: item.price_change_24h_percent || 0,
+          liquidity: item.liquidity || 0
+        }));
       }
-    } catch (err) {
-      console.log('Error fetching token list from Jupiter', err);
     }
+    
+    return [];
+  } catch (error) {
+    console.error('Error searching tokens from Birdeye:', error);
+    return [];
+  }
+}
 
-    // Return a basic token if everything else fails
+/**
+ * Fetches complete token metadata for a given token
+ */
+export async function fetchTokenMetadata(tokenAddress: string): Promise<TokenInfo | null> {
+  try {
+    const url = `${BIRDEYE_BASE_URL}/defi/v3/token/meta-data/single?address=${tokenAddress}&chain=solana`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: BIRDEYE_HEADERS
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[TokenService] Birdeye API error: ${response.status}, ${errorText}`);
+      throw new Error(`Failed to fetch token metadata: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.success && data.data) {
+      const tokenData = data.data;
+      
+      // Get market data as well
+      const marketData = await fetchTokenMarketData(tokenAddress);
+      
+      // Ensure no null values in the token data
+      return {
+        address: tokenAddress,
+        symbol: tokenData.symbol || 'Unknown',
+        name: tokenData.name || 'Unknown Token',
+        decimals: tokenData.decimals !== undefined ? tokenData.decimals : 9,
+        logoURI: tokenData.logo_uri || '',
+        price: (marketData && marketData.price) || 0,
+        marketCap: (marketData && marketData.market_cap) || 0,
+        volume24h: (marketData && marketData.volume_24h_usd) || 0,
+        priceChange24h: (marketData && marketData.price_change_24h_percent) || 0,
+        liquidity: (marketData && marketData.liquidity) || 0
+      };
+    }
+    
+    // If we can't fetch the data, return a basic token with the address
     return {
       address: tokenAddress,
-      symbol: tokenSymbol || 'Unknown',
-      name: tokenSymbol || 'Unknown Token',
-      decimals: 9, // Default to 9 for most tokens
-      logoURI: ''
+      symbol: 'Unknown',
+      name: 'Unknown Token',
+      decimals: 9,
+      logoURI: '',
+      price: 0,
+      marketCap: 0,
+      volume24h: 0,
+      priceChange24h: 0,
+      liquidity: 0
     };
-  } catch (err) {
-    console.error('Error in fetchTokenMetadata:', err);
+  } catch (error) {
+    console.error('Error fetching token metadata from Birdeye:', error);
+    // Return a basic token rather than null to prevent errors
+    return {
+      address: tokenAddress,
+      symbol: 'Unknown',
+      name: 'Unknown Token',
+      decimals: 9,
+      logoURI: '',
+      price: 0,
+      marketCap: 0,
+      volume24h: 0,
+      priceChange24h: 0,
+      liquidity: 0
+    };
+  }
+}
+
+/**
+ * Fetches token market data from Birdeye
+ */
+async function fetchTokenMarketData(tokenAddress: string): Promise<any | null> {
+  try {
+    const url = `${BIRDEYE_BASE_URL}/defi/v3/token/market-data?address=${tokenAddress}&chain=solana`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: BIRDEYE_HEADERS
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[TokenService] Birdeye API error: ${response.status}, ${errorText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (data.success && data.data) {
+      return data.data;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching token market data from Birdeye:', error);
     return null;
   }
 }
 
 /**
  * Ensures a token has complete metadata
- * If the token is missing essential fields (like logoURI), it fetches the complete data
  */
 export async function ensureCompleteTokenInfo(token: Partial<TokenInfo>): Promise<TokenInfo> {
-  // Check if we already have a complete token
-  if (token.address && 
-      token.symbol && 
-      token.name && 
-      token.decimals !== undefined && 
-      token.logoURI) {
-    return token as TokenInfo;
-  }
+  // Initialize with default values to ensure no nulls
+  const defaultToken: TokenInfo = {
+    address: token.address || '',
+    symbol: token.symbol || 'Unknown',
+    name: token.name || 'Unknown Token',
+    decimals: token.decimals !== undefined ? token.decimals : 9,
+    logoURI: token.logoURI || '',
+    price: token.price || 0,
+    marketCap: token.marketCap || 0,
+    volume24h: token.volume24h || 0,
+    priceChange24h: token.priceChange24h || 0,
+    liquidity: token.liquidity || 0
+  };
 
-  // If we have an address, try to fetch complete metadata
+  // Only if we have an address, try to fetch complete metadata
   if (token.address) {
-    const metadata = await fetchTokenMetadata(token.address, token.symbol);
+    try {
+      const metadata = await fetchTokenMetadata(token.address);
     if (metadata) {
-      // Merge the existing token data with the fetched metadata
+        // Merge fetched data with existing data, preferring existing non-null values
       return {
         ...metadata,
-        ...token, // Keep any existing fields that might be more accurate
-        // Always ensure we have a logoURI
-        logoURI: token.logoURI || metadata.logoURI || ''
-      } as TokenInfo;
+          symbol: token.symbol || metadata.symbol,
+          name: token.name || metadata.name,
+          decimals: token.decimals !== undefined ? token.decimals : metadata.decimals,
+          logoURI: token.logoURI || metadata.logoURI
+        };
+      }
+    } catch (error) {
+      console.error('Error in ensureCompleteTokenInfo:', error);
+      // Continue with default token if fetch fails
     }
   }
 
-  // If we can't fetch metadata, return a default constructed token
-  return {
-    address: token.address || 'unknown',
-    symbol: token.symbol || 'Unknown',
-    name: token.name || token.symbol || 'Unknown Token',
-    decimals: token.decimals !== undefined ? token.decimals : 9,
-    logoURI: token.logoURI || ''
-  } as TokenInfo;
+  // Return the token with default values for any missing fields
+  return defaultToken;
 } 

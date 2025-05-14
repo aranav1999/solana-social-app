@@ -11,6 +11,6 @@ const raydiumSwapRouter = Router();
  * - Building transactions
  * - Returning the transaction for signing
  */
-raydiumSwapRouter.post('/swap', raydiumSwapHandler);
+raydiumSwapRouter.post('/', raydiumSwapHandler);
 
 export default raydiumSwapRouter; 

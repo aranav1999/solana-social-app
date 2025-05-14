@@ -6,12 +6,14 @@ import {
   useRecoverEmbeddedWallet,
   isNotCreated,
   needsRecovery,
+  useLoginWithOAuth,
 } from '@privy-io/expo';
 import {useCallback} from 'react';
 import {useCustomization} from '../../../../config/CustomizationProvider';
 
 export function usePrivyWalletLogic() {
   const {login} = useLogin();
+  const {login: loginWithOAuth} = useLoginWithOAuth();
   const {user, isReady, logout} = usePrivy();
   const solanaWallet = useEmbeddedSolanaWallet();
   const {recover} = useRecoverEmbeddedWallet();
@@ -35,20 +37,44 @@ export function usePrivyWalletLogic() {
       }
       try {
         setStatusMessage?.(`Connecting with privy via ${loginMethod}...`);
-        // The actual login call
-        const session = await login({
-          loginMethods: [loginMethod],
-          appearance: {logo: ''},
-        });
-        if (session?.user) {
-          setStatusMessage?.(`Connected user: ${session.user.id}`);
+        
+        // For Apple and Google, use the OAuth method directly 
+        if (loginMethod === 'apple' || loginMethod === 'google') {
+          const result = await loginWithOAuth({ 
+            provider: loginMethod,
+            // For Apple, don't set isLegacyAppleIosBehaviorEnabled to use native flow
+          });
+          
+          console.log(`Privy ${loginMethod} login result:`, result);
+          
+          if (!result) {
+            const errorMsg = `${loginMethod} authentication did not complete successfully`;
+            console.error(errorMsg);
+            throw new Error(errorMsg);
+          }
+          
+          if (result) {
+            setStatusMessage?.(`Connected via ${loginMethod}`);
+            return result;
+          }
+        } else {
+          // For email and other methods, use the regular login 
+          const session = await login({
+            loginMethods: [loginMethod],
+            appearance: {logo: ''},
+          });
+          if (session?.user) {
+            setStatusMessage?.(`Connected user: ${session.user.id}`);
+            return session;
+          }
         }
       } catch (error: any) {
         console.error('Privy Login Error:', error);
         setStatusMessage?.(`Connection failed: ${error.message}`);
+        throw error; // Re-throw to allow component-level error handling
       }
     },
-    [user, login],
+    [user, login, loginWithOAuth],
   );
 
   const monitorSolanaWallet = useCallback(

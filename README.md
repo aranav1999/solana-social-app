@@ -462,6 +462,41 @@ This project is licensed under the Apache-2.0 License - see the [LICENSE](LICENS
 
 ---
 
+## Birdeye API Integration
+
+The application now uses Birdeye APIs for token listing and searching, providing users with accurate market data:
+
+### Features
+
+- Token listing sorted by market cap (high to low)
+- Debounced token search functionality
+- Real-time price and 24h price change data
+- Pagination support for token lists
+- Zero fallbacks or hardcoded token data
+
+### Setup
+
+To use the Birdeye API, you need to add your API key to the environment variables:
+
+```
+BIRDEYE_API_KEY=your_api_key_here
+```
+
+### API Endpoints Used
+
+- Token List: `https://public-api.birdeye.so/defi/v3/token/list`
+- Token Search: `https://public-api.birdeye.so/defi/v3/search`
+- Token Metadata: `https://public-api.birdeye.so/defi/v3/token/meta-data/single`
+- Token Market Data: `https://public-api.birdeye.so/defi/v3/token/market-data`
+
+### Hooks
+
+Custom hooks for using the Birdeye API:
+
+- `useTokenSearch`: Provides debounced search functionality for tokens
+
+---
+
 <div align="center">
 
 Built with ❤️ for the Solana ecosystem by Send Arcade

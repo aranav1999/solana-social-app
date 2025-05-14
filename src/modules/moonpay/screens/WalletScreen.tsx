@@ -24,6 +24,8 @@ import COLORS from '@/assets/colors';
 import Icons from '@/assets/svgs';
 import AppHeader from '@/core/sharedUI/AppHeader';
 import { styles } from './WalletScreen.style';
+import { RootStackParamList } from '@/shared/navigation/RootNavigator';
+import { StackNavigationProp } from '@react-navigation/stack';
 
 const SOL_DECIMAL = 1000000000; // 1 SOL = 10^9 lamports
 
@@ -36,7 +38,7 @@ interface SkeletonLineProps {
 
 function SkeletonLine({ width, height = 20, style }: SkeletonLineProps) {
   const pulseAnim = useRef(new Animated.Value(0)).current;
-  
+
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -54,17 +56,17 @@ function SkeletonLine({ width, height = 20, style }: SkeletonLineProps) {
         }),
       ])
     );
-    
+
     pulse.start();
-    
+
     return () => pulse.stop();
   }, [pulseAnim]);
-  
+
   const opacity = pulseAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.3, 0.6],
   });
-  
+
   return (
     <Animated.View
       style={[
@@ -86,12 +88,12 @@ interface WalletScreenProps {
    * Function to handle on-ramp (add funds) action
    */
   onOnrampPress?: () => void;
-  
+
   /**
    * Callback for refresh action
    */
   onRefresh?: () => void;
-  
+
   /**
    * Whether the wallet data is currently refreshing
    */
@@ -107,21 +109,21 @@ function WalletScreen({
   refreshing,
 }: WalletScreenProps) {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [copied, setCopied] = useState(false);
-  
+
   // Use the wallet hook to get the address
   const { address } = useWallet();
   const walletAddress = address;
-  
+
   // State for balance and loading
   const [nativeBalance, setNativeBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Animation for loading spinner
   const spinValue = useRef(new Animated.Value(0)).current;
-  
+
   // Start spinner animation
   useEffect(() => {
     if (loading) {
@@ -137,40 +139,40 @@ function WalletScreen({
       spinValue.setValue(0);
     }
   }, [loading, spinValue]);
-  
+
   // Interpolate for spin animation
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
-  
+
   // Format wallet balance for display
-  const walletBalance = nativeBalance !== null 
-    ? `${(nativeBalance / SOL_DECIMAL).toFixed(4)} SOL` 
+  const walletBalance = nativeBalance !== null
+    ? `${(nativeBalance / SOL_DECIMAL).toFixed(4)} SOL`
     : '0.00 SOL';
-  
+
   // Function to fetch balance
   const fetchBalance = async () => {
     if (!walletAddress) {
       setLoading(false);
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Create a connection to the Solana cluster
       const connection = new Connection(HELIUS_STAKED_URL, 'confirmed');
-      
+
       // Get the wallet public key
       const publicKey = new PublicKey(walletAddress);
-      
+
       // Fetch the balance
       const balance = await connection.getBalance(publicKey);
       console.log("balance", balance)
       console.log('[WalletScreen] SOL balance in lamports:', balance);
-      
+
       // Update state with the balance
       setNativeBalance(balance);
       setLoading(false);
@@ -180,7 +182,7 @@ function WalletScreen({
       setLoading(false);
     }
   };
-  
+
   // Handle refresh
   const handleRefresh = async () => {
     if (onRefresh) {
@@ -188,7 +190,7 @@ function WalletScreen({
     }
     await fetchBalance();
   };
-  
+
   // Handle onramp (add funds) press
   const handleOnrampPress = () => {
     if (onOnrampPress) {
@@ -198,18 +200,18 @@ function WalletScreen({
       navigation.navigate('OnrampScreen' as never);
     }
   };
-  
+
   // Fetch balance on mount and when wallet address changes
   useEffect(() => {
     fetchBalance();
   }, [walletAddress]);
-  
+
   // Animation values
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const checkmarkOpacityAnim = useRef(new Animated.Value(0)).current;
-  
+
   // Handle copy animation
   useEffect(() => {
     if (copied) {
@@ -246,7 +248,7 @@ function WalletScreen({
             easing: Easing.elastic(1.2),
           }),
         ]).start();
-        
+
         // After a delay, revert back to copy icon
         setTimeout(() => {
           // Animate checkmark out
@@ -264,7 +266,7 @@ function WalletScreen({
           ]).start(() => {
             // Reset rotation
             rotateAnim.setValue(0);
-            
+
             // Animate copy icon back in
             Animated.parallel([
               Animated.timing(opacityAnim, {
@@ -286,24 +288,24 @@ function WalletScreen({
       });
     }
   }, [copied, opacityAnim, scaleAnim, rotateAnim, checkmarkOpacityAnim]);
-  
+
   // Interpolate rotation value
   const rotate = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '90deg'],
   });
-  
+
   const copyToClipboard = () => {
     if (!copied && walletAddress) {
       Clipboard.setString(walletAddress);
       setCopied(true);
     }
   };
-  
+
   // Show loading state while fetching data
   if (loading && !nativeBalance) {
     return (
-      <View style={[styles.container, {paddingTop: insets.top}]}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar
           barStyle="light-content"
           backgroundColor="transparent"
@@ -321,8 +323,8 @@ function WalletScreen({
                 alignItems: 'center',
                 justifyContent: 'space-between',
               }}>
-              <SkeletonLine width={120} height={36} style={{marginTop: 8}} />
-              <Animated.View style={{transform: [{rotate: spin}]}}>
+              <SkeletonLine width={120} height={36} style={{ marginTop: 8 }} />
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
                 <View style={styles.loadingIconContainer}>
                   <Icons.walletIcon
                     width={24}
@@ -335,15 +337,15 @@ function WalletScreen({
           </View>
 
           {/* Wallet Address Skeleton */}
-          <View style={[styles.addressContainer, {marginTop: 24}]}>
+          <View style={[styles.addressContainer, { marginTop: 24 }]}>
             <Text style={styles.addressLabel}>Wallet Address</Text>
             <View
-              style={[styles.addressCard, {justifyContent: 'space-between'}]}>
-              <View style={{flex: 0.7}}>
+              style={[styles.addressCard, { justifyContent: 'space-between' }]}>
+              <View style={{ flex: 0.7 }}>
                 <SkeletonLine
                   width={100}
                   height={20}
-                  style={{marginVertical: 8}}
+                  style={{ marginVertical: 8 }}
                 />
               </View>
               <View style={styles.skeletonCopyButton}>
@@ -353,15 +355,15 @@ function WalletScreen({
           </View>
 
           {/* Actions Skeleton */}
-          <View style={[styles.actionsContainer, {marginTop: 24}]}>
+          <View style={[styles.actionsContainer, { marginTop: 24 }]}>
             <Text style={styles.actionsLabel}>Actions</Text>
 
             {/* Action Button Skeletons */}
-            <View style={[styles.actionButton, {marginTop: 12}]}>
+            <View style={[styles.actionButton, { marginTop: 12 }]}>
               <View
                 style={[
                   styles.actionIconContainer,
-                  {backgroundColor: COLORS.brandBlue},
+                  { backgroundColor: COLORS.brandBlue },
                 ]}>
                 <Icons.AddFundsIcon
                   width={24}
@@ -380,7 +382,7 @@ function WalletScreen({
                 <SkeletonLine
                   width={80}
                   height={18}
-                  style={{marginBottom: 8}}
+                  style={{ marginBottom: 8 }}
                 />
                 <SkeletonLine width={160} height={14} />
               </View>
@@ -391,16 +393,16 @@ function WalletScreen({
             <Text style={styles.loadingText}>Loading wallet data</Text>
             <View style={styles.loadingDotsContainer}>
               <Animated.View
-                style={[styles.loadingDot, {opacity: spinValue}]}
+                style={[styles.loadingDot, { opacity: spinValue }]}
               />
               <Animated.View
                 style={[
                   styles.loadingDot,
-                  {opacity: spinValue, marginHorizontal: 4},
+                  { opacity: spinValue, marginHorizontal: 4 },
                 ]}
               />
               <Animated.View
-                style={[styles.loadingDot, {opacity: spinValue}]}
+                style={[styles.loadingDot, { opacity: spinValue }]}
               />
             </View>
           </View>
@@ -408,7 +410,7 @@ function WalletScreen({
       </View>
     );
   }
-  
+
   // Show error state if there was a problem
   if (error && !nativeBalance) {
     return (
@@ -418,8 +420,8 @@ function WalletScreen({
           backgroundColor="transparent"
           translucent
         />
-        <AppHeader 
-          title="Wallet" 
+        <AppHeader
+          title="Wallet"
           showDefaultRightIcons={false}
         />
         <View style={styles.errorContainer}>
@@ -442,7 +444,7 @@ function WalletScreen({
       </View>
     );
   }
-  
+
   return (
     <View style={[
       styles.container,
@@ -453,13 +455,13 @@ function WalletScreen({
         backgroundColor="transparent"
         translucent
       />
-      <AppHeader 
-        title="Wallet" 
+      <AppHeader
+        title="Wallet"
         showDefaultRightIcons={false}
       />
-      
-      <ScrollView 
-        style={styles.scrollView} 
+
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={[
           styles.contentContainer,
           { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }
@@ -478,17 +480,17 @@ function WalletScreen({
           {loading ? (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={styles.balanceValue}>{walletBalance}</Text>
-              <ActivityIndicator 
-                size="small" 
-                color={COLORS.brandBlue} 
-                style={{ marginLeft: 10 }} 
+              <ActivityIndicator
+                size="small"
+                color={COLORS.brandBlue}
+                style={{ marginLeft: 10 }}
               />
             </View>
           ) : (
             <Text style={styles.balanceValue}>{walletBalance}</Text>
           )}
         </View>
-        
+
         <View style={styles.addressContainer}>
           <Text style={styles.addressLabel}>Wallet Address</Text>
           <View style={styles.addressCard}>
@@ -497,8 +499,8 @@ function WalletScreen({
                 ? `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`
                 : walletAddress || 'No address found'}
             </Text>
-            <TouchableOpacity 
-              onPress={copyToClipboard} 
+            <TouchableOpacity
+              onPress={copyToClipboard}
               style={styles.copyIconButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               activeOpacity={0.7}
@@ -513,7 +515,7 @@ function WalletScreen({
                 }}>
                   <Icons.copyIcon width={20} height={20} color={COLORS.white} />
                 </Animated.View>
-                
+
                 {/* Checkmark (animated) */}
                 <Animated.View style={{
                   opacity: checkmarkOpacityAnim,
@@ -528,11 +530,11 @@ function WalletScreen({
             </TouchableOpacity>
           </View>
         </View>
-        
+
         <View style={styles.actionsContainer}>
           <Text style={styles.actionsLabel}>Actions</Text>
-          <TouchableOpacity 
-            style={styles.actionButton} 
+          <TouchableOpacity
+            style={styles.actionButton}
             onPress={handleOnrampPress}
             activeOpacity={0.7}
           >
@@ -550,7 +552,7 @@ function WalletScreen({
               <Text style={styles.actionBadgeText}>MoonPay</Text>
             </View>
           </TouchableOpacity>
-          
+
           {/* Add Transaction History Card */}
           {nativeBalance !== null && nativeBalance > 0 && (
             <View style={styles.transactionHistoryCard}>
@@ -562,6 +564,35 @@ function WalletScreen({
               </View>
             </View>
           )}
+        </View>
+
+        {/* Legal Links Section */}
+        <View style={styles.legalLinksContainer}>
+          <TouchableOpacity
+            style={styles.legalLinkButton}
+            onPress={() => navigation.navigate('WebViewScreen', {
+              uri: 'https://www.solanaappkit.com/privacy',
+              title: 'Privacy Policy'
+            })}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
+            <Icons.arrowRIght width={16} height={16} color={COLORS.greyDark} />
+          </TouchableOpacity>
+
+          <View style={styles.separator} />
+
+          <TouchableOpacity
+            style={styles.legalLinkButton}
+            onPress={() => navigation.navigate('WebViewScreen', {
+              uri: 'https://www.solanaappkit.com/tnc',
+              title: 'Terms & Conditions'
+            })}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.legalLinkText}>Terms & Conditions</Text>
+            <Icons.arrowRIght width={16} height={16} color={COLORS.greyDark} />
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 // import fetch from 'node-fetch';
 import FormData from 'form-data';
+import { PinataSDK } from 'pinata';
 
 export async function uploadToIpfs(
   imagePathOrBuffer: string | Buffer,
@@ -37,6 +38,7 @@ export async function uploadToIpfs(
   if (metadata.twitter) formData.append('twitter', metadata.twitter);
   if (metadata.telegram) formData.append('telegram', metadata.telegram);
   if (metadata.website) formData.append('website', metadata.website);
+  if (metadata.createdOn) formData.append('createdOn', metadata.createdOn || 'https://pump.fun');
   formData.append('showName', metadata.showName?.toString() || 'true');
 
   // 3) Upload to Pump Fun IPFS API
@@ -57,5 +59,114 @@ export async function uploadToIpfs(
 
   console.log('Metadata URI:', metadataUri);
   return metadataUri;
+}
+
+/**
+ * Upload response type from Pinata
+ */
+export type PinataUploadResponse = {
+  id: string;
+  name: string;
+  cid: string;
+  size: number;
+  created_at: string;
+  number_of_files: number;
+  mime_type: string;
+  group_id: string | null;
+  keyvalues: {
+    [key: string]: string;
+  };
+  vectorized: boolean;
+  network: string;
+};
+
+/**
+ * Upload image and metadata to Pinata IPFS
+ * @param imagePathOrBuffer - Path to image file or buffer containing image data
+ * @param metadata - Token metadata to include with the image
+ * @returns - The IPFS URI for the uploaded metadata
+ */
+export async function uploadToPinata(
+  imagePathOrBuffer: string | Buffer,
+  metadata: Record<string, any>,
+): Promise<string> {
+  const { default: fetch } = await import('node-fetch');
+
+  // Get file buffer either from path or directly from buffer
+  let fileBuffer: Buffer;
+  if (typeof imagePathOrBuffer === 'string') {
+    // It's a file path, read the file
+    const resolvedPath = path.resolve(imagePathOrBuffer);
+    fileBuffer = fs.readFileSync(resolvedPath);
+  } else {
+    // It's already a buffer
+    fileBuffer = imagePathOrBuffer;
+  }
+
+  // Initialize Pinata SDK with environment variables
+  const pinata = new PinataSDK({
+    pinataJwt: process.env.PINATA_JWT!,
+    pinataGateway: process.env.PINATA_GATEWAY,
+  });
+  
+  console.log('Uploading image to Pinata...');
+  
+  // Create a temp file to upload using FormData
+  const fileName = `image-${Date.now()}.png`;
+  const tempFilePath = path.join(process.cwd(), fileName);
+  fs.writeFileSync(tempFilePath, fileBuffer);
+  
+  try {
+    // Use low-level API with FormData to upload the image
+    const formData = new FormData();
+    const readStream = fs.createReadStream(tempFilePath);
+    formData.append('file', readStream, { filename: fileName });
+    
+    // Upload to Pinata using FormData
+    const imageResponse = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.PINATA_JWT}`
+      },
+      body: formData,
+    });
+    
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to upload image to Pinata: ${imageResponse.statusText}`);
+    }
+    
+    const imageUploadData = await imageResponse.json() as { IpfsHash: string };
+    const imageUri = `https://ipfs.io/ipfs/${imageUploadData.IpfsHash}`;
+    console.log('Image uploaded to Pinata, CID:', imageUploadData.IpfsHash);
+    
+    // Create the metadata object with the image URI
+    const metadataObject = {
+      name: metadata.name || '',
+      symbol: metadata.symbol || '',
+      description: metadata.description || '',
+      showName: metadata.showName !== undefined ? metadata.showName : true,
+      twitter: metadata.twitter || '',
+      telegram: metadata.telegram || '',
+      website: metadata.website || '',
+      createdOn: metadata.createdOn || 'https://raydium.io/',
+      image: imageUri,
+    };
+    
+    console.log('Uploading metadata to Pinata...');
+    
+    // Upload the metadata JSON
+    const metadataUpload = await pinata.upload.public.json(metadataObject);
+    
+    // Return the IPFS link to the metadata
+    const metadataUri = `https://ipfs.io/ipfs/${metadataUpload.cid}`;
+    
+    console.log('Metadata uploaded to Pinata, URI:', metadataUri);
+    return metadataUri;
+  } finally {
+    // Clean up the temporary file
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
 }
 

@@ -199,7 +199,7 @@ export interface WithdrawSurplusParam {
 // Interface for create pool parameters
 export interface CreatePoolParam {
   quoteMint: string;
-  baseMint: string;
+  baseMint?: string;
   config: string;
   baseTokenType: number;
   quoteTokenType: number;

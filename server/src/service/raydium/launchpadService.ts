@@ -49,73 +49,24 @@ interface CreateLaunchpadTokenParams {
   vestingPercentage: string;
   vestingDuration?: string;  // In months
   vestingCliff?: string;     // In months
+  vestingTimeUnit?: string;  // 'day', 'week', 'month', or 'year'
   enableFeeSharingPost?: boolean;
   userPublicKey: string;
   mode: 'justSendIt' | 'launchLab'; // Mode to identify which creation path to use
+  createOnly?: boolean; // Option to only create token without buying
+  initialBuyAmount?: string; // Amount of SOL for initial buy (if createOnly is false)
+  migrateType?: 'amm' | 'cpmm'; // AMM for standard pool, CPMM for fee sharing
+  shareFeeReceiver?: string; // Address receiving share fees
+  shareFeeRate?: number; // Rate for fee sharing
+  platformFeeRate?: number; // Platform fee rate
+  slippageBps?: number; // Slippage tolerance in basis points
+  computeBudgetConfig?: {
+    units?: number;
+    microLamports?: number;
+  };
 }
 
 export class RaydiumLaunchpadService {
-  /**
-   * Generate and upload metadata to IPFS
-   * Uses the project's ipfs.ts utility to handle the upload
-   */
-  static async generateMetadataUri(metadata: TokenMetadata): Promise<string> {
-    try {
-      // Check if we have base64 image data
-      let imageBuffer: Buffer | null = null;
-      if (metadata.image && metadata.image.startsWith('data:image')) {
-        // Extract the base64 data and convert to buffer
-        const base64Data = metadata.image.split(',')[1];
-        imageBuffer = Buffer.from(base64Data, 'base64');
-      }
-
-      // Prepare the metadata object for IPFS
-      const metadataObj = {
-        name: metadata.name,
-        symbol: metadata.symbol,
-        description: metadata.description || `${metadata.name} token launched via Raydium Launchpad`,
-        createdOn: metadata.createdOn || "https://raydium.io/",
-        twitter: metadata.twitter || "",
-        telegram: metadata.telegram || "",
-        website: metadata.website || metadata.external_url || "",
-        showName: "true" // Convert boolean to string
-      };
-
-      // If we don't have an image buffer, we can't upload an image
-      // In a real implementation, you might want to use a default image
-      if (!imageBuffer) {
-        console.log('[RaydiumLaunchpadService] No image data provided, using default metadata');
-        
-        // Create a FormData object and make a direct request to the Pump.fun API
-        const formData = new FormData();
-        
-        // Add metadata fields - ensure all values are strings
-        for (const [key, value] of Object.entries(metadataObj)) {
-          formData.append(key, value.toString());
-        }
-        
-        const { default: fetch } = await import('node-fetch');
-        const response = await fetch('https://pump.fun/api/ipfs', {
-          method: 'POST',
-          body: formData as any, // Cast to any to work around type issues
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to upload metadata: ${response.statusText}`);
-        }
-        
-        const data = await response.json() as { metadataUri: string };
-        return data.metadataUri;
-      }
-
-      // Use the existing uploadToIpfs function to upload both image and metadata
-      return await uploadToIpfs(imageBuffer, metadataObj);
-    } catch (error) {
-      console.error('[RaydiumLaunchpadService] Error generating metadata URI:', error);
-      throw new Error(`Failed to generate metadata URI: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
   /**
    * Create a new token and launchpad pool
    */
@@ -128,7 +79,7 @@ export class RaydiumLaunchpadService {
       console.log('[RaydiumLaunchpadService] Starting token creation');
       console.log('[RaydiumLaunchpadService] User public key:', params.userPublicKey);
       
-      const raydium = await initSdk();
+      const raydium = await initSdk(params.userPublicKey);
       
       // Get program ID based on environment
       const programId = PROGRAM_ID;
@@ -187,7 +138,18 @@ export class RaydiumLaunchpadService {
       }
       
       // Create a BN for buyAmount (in lamports)
-      const buyAmount = new BN(solRaisedFloat * 1e9);
+      let buyAmount=new BN(0);
+
+      if (params.createOnly) {
+        // Use a minimal value for buyAmount when createOnly is true
+        console.log(`Using minimal buyAmount for createOnly mode`);
+        buyAmount = new BN(1); // Minimal value
+      } else if (params.initialBuyAmount) {
+        // Use the specified initialBuyAmount if provided (in SOL)
+        const initialBuyFloat = parseFloat(params.initialBuyAmount);
+        console.log(`Using specified initialBuyAmount: ${initialBuyFloat} SOL`);
+        buyAmount = new BN(initialBuyFloat * 1e9);
+      }
       
       console.log(`Token name: ${params.tokenName}`);
       console.log(`Token symbol: ${params.tokenSymbol}`);
@@ -198,6 +160,10 @@ export class RaydiumLaunchpadService {
       
       // Get the most recent blockhash for the transaction
       const { blockhash } = await raydium.connection.getLatestBlockhash();
+
+      // Convert fee rates to BN if needed
+      const shareFeeRateBN = params.shareFeeRate ? new BN(params.shareFeeRate) : new BN(10000);
+      const platformFeeRateBN = params.platformFeeRate ? new BN(params.platformFeeRate) : undefined;
       
       // Prepare create launchpad call
       const { transactions, execute, extInfo } = await raydium.launchpad.createLaunchpad({
@@ -207,16 +173,42 @@ export class RaydiumLaunchpadService {
         name: params.tokenName,
         symbol: params.tokenSymbol,
         uri: params.metadataUri || 'https://raydium.io/',
-        migrateType: 'amm',
+        migrateType: params.migrateType || (params.enableFeeSharingPost ? 'cpmm' : 'amm'),
         
         configId,
         configInfo, // Using the retrieved config info
         mintBDecimals: mintBInfo.decimals,
         txVersion: TxVersion.V0,
-        slippage: new BN(100), // 1% slippage
+        slippage: new BN(params.slippageBps || 100), // Default to 1% slippage
         buyAmount,
-        createOnly: true, // Just create the token, don't buy
+        createOnly: params.createOnly !== false, // Default to true unless explicitly set to false
         extraSigners: [pair], // Include the token mint keypair
+        
+        // Handle vesting configuration
+        ...(params.vestingPercentage && parseInt(params.vestingPercentage) > 0 ? {
+          vesting: {
+            lockedPercent: parseInt(params.vestingPercentage),
+            cliff: params.vestingCliff ? parseInt(params.vestingCliff) : 0,
+            duration: params.vestingDuration ? parseInt(params.vestingDuration) : 0,
+            timeUnit: params.vestingTimeUnit || 'month', // Default to month
+          }
+        } : {}),
+        
+        // Add fee configuration if provided
+        ...(params.shareFeeReceiver ? {
+          shareFeeReceiver: new PublicKey(params.shareFeeReceiver),
+          shareFeeRate: shareFeeRateBN,
+        } : {}),
+        
+        // Add platform fee if provided
+        ...(params.platformFeeRate ? {
+          platformFeeRate: platformFeeRateBN,
+        } : {}),
+        
+        // Add compute budget if provided
+        ...(params.computeBudgetConfig ? {
+          computeBudgetConfig: params.computeBudgetConfig,
+        } : {}),
       });
       
       // Get the transaction we need to send

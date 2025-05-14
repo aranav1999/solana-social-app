@@ -48,9 +48,13 @@ export const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   logoutText: {
+    color: COLORS.white,
     fontSize: 16,
-    color: 'red',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  headerMenuButton: {
+    padding: 8,
+    marginRight: -8,
   },
   profileWrapper: {
     flex: 1,

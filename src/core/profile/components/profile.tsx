@@ -46,6 +46,7 @@ import { useFetchPortfolio } from '@/modules/dataModule/hooks/useFetchTokens';
 import { AssetItem } from '@/modules/dataModule/types/assetTypes';
 import EditPostModal from '@/core/thread/components/EditPostModal';
 import Icons from '@/assets/svgs';
+import AccountSettingsDrawer from './AccountSettingsDrawer';
 
 export default function Profile({
   isOwnProfile = false,
@@ -57,6 +58,7 @@ export default function Profile({
   containerStyle,
   onGoBack,
   isScreenLoading,
+  onDeleteAccountPress,
 }: ProfileProps) {
   const dispatch = useAppDispatch();
   const allReduxPosts = useAppSelector(state => state.thread.allPosts);
@@ -146,10 +148,13 @@ export default function Profile({
     const hasTimePassed = Date.now() - loadStartTime > 3000;
     if (hasTimePassed) return false;
 
-    // Original conditions for Profile's internal loading 
-    // (Only consider these if isScreenLoading is not false, or undefined)
-    if (!isOwnProfile && isScreenLoading !== false) return false; // If not own profile, usually no big loader unless screen forces it.
+    // If not own profile, usually no big loader (defer to parent skeleton/loading state).
+    // The isScreenLoading !== false check becomes redundant due to the check at the beginning of this useMemo.
+    if (!isOwnProfile) {
+      return false;
+    }
 
+    // Original conditions for Profile's internal loading (now only for own profile)
     return (
       isProfileLoading ||
       isFollowersLoading ||
@@ -158,7 +163,7 @@ export default function Profile({
       loadingPortfolio
     );
   }, [
-    isScreenLoading, // Add to dependency array
+    isScreenLoading,
     initialDataLoaded,
     isOwnProfile,
     isProfileLoading,
@@ -593,8 +598,8 @@ export default function Profile({
     }
   }, [onGoBack, navigation]);
 
-  // Handle logout
-  const handleLogout = useCallback(() => {
+  // Handle logout (this will be passed to the drawer)
+  const handleLogoutAction = useCallback(() => {
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -611,6 +616,24 @@ export default function Profile({
       ],
     );
   }, [logout]);
+
+  // Handle delete account (this will be passed to the drawer)
+  const handleDeleteAccountAction = useCallback(() => {
+    if (onDeleteAccountPress) {
+      onDeleteAccountPress();
+    }
+  }, [onDeleteAccountPress]);
+
+  const handleOpenMenu = () => {
+    if (!isOwnProfile) return;
+    setIsAccountSettingsDrawerVisible(true); // Open the custom drawer
+  };
+
+  const handleCloseDrawer = () => {
+    setIsAccountSettingsDrawerVisible(false);
+  };
+
+  const [isAccountSettingsDrawerVisible, setIsAccountSettingsDrawerVisible] = useState(false);
 
   return (
     <SafeAreaView
@@ -633,8 +656,8 @@ export default function Profile({
         </View>
 
         {isOwnProfile && (
-          <TouchableOpacity onPress={handleLogout} style={styles.headerLogoutButton}>
-            <Text style={styles.logoutText}>Logout</Text>
+          <TouchableOpacity onPress={handleOpenMenu} style={styles.headerMenuButton}>
+            <Icons.DotsThree width={24} height={24} color={COLORS.white} />
           </TouchableOpacity>
         )}
       </View>
@@ -651,7 +674,7 @@ export default function Profile({
           onAvatarPress={() => handleProfileUpdated('image')}
           onEditProfile={() => handleProfileUpdated('username')}
           onShareProfile={() => { }}
-          onLogout={isOwnProfile ? handleLogout : undefined}
+          onLogout={isOwnProfile ? handleLogoutAction : undefined}
           {...memoizedFollowProps}
           onPressPost={handlePostPress}
           containerStyle={containerStyle}
@@ -673,6 +696,16 @@ export default function Profile({
         onClose={() => setEditingPost(null)}
         post={editingPost}
       />
+
+      {/* Account Settings Drawer */}
+      {isOwnProfile && (
+        <AccountSettingsDrawer
+          isVisible={isAccountSettingsDrawerVisible}
+          onClose={handleCloseDrawer}
+          onLogout={handleLogoutAction} // Pass the logout handler
+          onDeleteAccount={handleDeleteAccountAction} // Pass the delete handler
+        />
+      )}
     </SafeAreaView>
   );
 }

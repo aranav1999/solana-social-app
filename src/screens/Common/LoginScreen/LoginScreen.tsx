@@ -414,14 +414,45 @@ export default function LoginScreen() {
   const handleWalletConnected = async (info: { provider: string; address: string }) => {
     console.log('Wallet connected:', info);
     try {
-      // First create the user entry in the database
-      await axios.post(`${SERVER_BASE_URL}/api/profile/createUser`, {
-        userId: info.address,
-        username: info.address.slice(0, 6), // Initially set to wallet address
-        handle: '@' + info.address.slice(0, 6),
-      });
+      // First check if user already exists
+      try {
+        // Try to create the user entry in the database
+        const response = await axios.post(`${SERVER_BASE_URL}/api/profile/createUser`, {
+          userId: info.address,
+          username: info.address.slice(0, 6), // Initially set to wallet address
+          handle: '@' + info.address.slice(0, 6),
+        });
+        
+        console.log('User creation response:', response.data);
+      } catch (createError: any) {
+        // Log error information once, but don't show response details that might include stack traces
+        console.log('User creation error (might be already existing):', createError?.response?.status || createError.message);
+        
+        // Only show detailed errors in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Create user error details:', {
+            status: createError?.response?.status,
+            message: createError?.response?.data?.message || createError.message
+          });
+        }
+        
+        // Don't log the full error object to prevent duplicate verbose errors in console
+        // Only log critical errors that aren't related to user already existing
+        const isNonCriticalError = 
+          // User already exists (409)
+          createError?.response?.status === 409 || 
+          // Server error but likely just user exists (500 from server but with specific message)
+          (createError?.response?.status === 500 && 
+            (createError?.response?.data?.message?.includes('already exists') || 
+             createError?.response?.data?.message?.includes('duplicate key')));
+        
+        if (!isNonCriticalError) {
+          console.warn('Non-critical error creating user. Login will proceed.');
+        }
+      }
 
-      // Then proceed with login
+      // Proceed with login regardless of whether user creation succeeded
+      // This way, existing users can still log in
       dispatch(
         loginSuccess({
           provider: info.provider as 'privy' | 'dynamic' | 'turnkey' | 'mwa',
@@ -765,7 +796,7 @@ export default function LoginScreen() {
         </View>
 
         {renderAuthComponent()}
-        <View
+        {/* <View
           style={{
             position: 'absolute',
             bottom: 300,
@@ -782,7 +813,7 @@ export default function LoginScreen() {
             style={{color: '#ffffff', fontSize: 10, fontFamily: 'monospace'}}>
             URL Scheme: {appInfo.urlScheme}
           </Text>
-        </View>
+        </View> */}
         <Text style={styles.agreementText}>
           By continuing you agree to our t&c and Privacy Policy
         </Text>

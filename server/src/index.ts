@@ -27,6 +27,7 @@ import cors from 'cors';
 import meteoraDBCRouter from './routes/meteora/meteoraDBCRoutes';
 import { setupConnection } from './utils/connection';
 import raydiumLaunchpadRoutes from './routes/raydium/launchpad.routes';
+import nftRoutes from './routes/nft';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -178,6 +179,7 @@ app.use('/api/auth', turnkeyAuthRouter);
 app.use('/api/aura', auraRouter);
 app.use('/api/chat', chatRouter); // Add the chat routes
 app.use('/api/meteora', meteoraDBCRouter);
+app.use('/api/nft', nftRoutes);
 
 // app.post('/api/build-compressed-nft-listing-tx', async (req: any, res: any) => {
 //   try {

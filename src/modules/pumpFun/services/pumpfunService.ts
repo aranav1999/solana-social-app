@@ -1,8 +1,9 @@
-import {PublicKey, Keypair, LAMPORTS_PER_SOL} from '@solana/web3.js';
-import {PumpFunSDK} from 'pumpdotfun-sdk';
-import {getAssociatedTokenAddress} from '@solana/spl-token';
-import {SystemProgram} from '@solana/web3.js';
-
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, TransactionInstruction, MessageV0, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
+import { PumpFunSDK } from 'pumpdotfun-sdk';
+import { getAssociatedTokenAddress } from '@solana/spl-token';
+import { PumpSdk, BondingCurve,  getBuyTokenAmountFromSolAmount } from "@pump-fun/pump-sdk"
+import { CreateAndBuyTokenParams, BuyTokenParams, SellTokenParams } from './types';
+import BN from 'bn.js';
 import {
   getProvider,
   checkIfTokenIsOnRaydium,
@@ -13,9 +14,7 @@ import {
   buildPumpFunSellTransaction,
   RAYDIUM_SOL_MINT,
 } from '../utils/pumpfunUtils';
-
-import {calculateWithSlippageBuy} from 'pumpdotfun-sdk';
-import {COMMISSION_WALLET, SERVER_URL} from '@env';
+import { COMMISSION_WALLET, SERVER_URL } from '@env';
 import { TransactionService } from '@/modules/walletProviders/services/transaction/transactionService';
 
 /**
@@ -31,23 +30,9 @@ export async function createAndBuyTokenViaPumpfun({
   website,
   imageUri,
   solAmount,
-  slippageBasisPoints = 500n,
   solanaWallet,
   onStatusUpdate,
-}: {
-  userPublicKey: string;
-  tokenName: string;
-  tokenSymbol: string;
-  description: string;
-  twitter?: string;
-  telegram?: string;
-  website?: string;
-  imageUri: string;
-  solAmount: number;
-  slippageBasisPoints?: bigint;
-  solanaWallet: any;
-  onStatusUpdate?: (status: string) => void;
-}) {
+}: CreateAndBuyTokenParams) {
   if (!solanaWallet) {
     throw new Error(
       'No Solana wallet found. Please connect your wallet first.',
@@ -56,7 +41,7 @@ export async function createAndBuyTokenViaPumpfun({
 
   const provider = getProvider();
   const connection = provider.connection;
-  const sdk = new PumpFunSDK(provider);
+  const pumpSdk = new PumpSdk(connection);
   const creatorPubkey = new PublicKey(userPublicKey);
 
   console.log('[createAndBuyTokenViaPumpfun] =>', {
@@ -70,25 +55,25 @@ export async function createAndBuyTokenViaPumpfun({
   try {
     onStatusUpdate?.('Uploading token metadata...');
     const uploadEndpoint = `${SERVER_URL}/api/pumpfun/uploadMetadata`;
-    const formData = new FormData();
-    formData.append('publicKey', userPublicKey);
-    formData.append('tokenName', tokenName);
-    formData.append('tokenSymbol', tokenSymbol);
-    formData.append('description', description);
-    formData.append('twitter', twitter || '');
-    formData.append('telegram', telegram || '');
-    formData.append('website', website || '');
-    formData.append('showName', 'true');
-    formData.append('mode', 'local');
-    formData.append('image', {
-      uri: imageUri,
-      name: 'token.png',
-      type: 'image/png',
-    } as any);
+    const commissionWallet = new PublicKey(COMMISSION_WALLET);
+
+    const mint = Keypair.generate();
+
+    const metadata = {
+      name: tokenName,
+      symbol: tokenSymbol,
+      description: description,
+      showName: true,
+      createdOn: "https://www.solanaappkit.com",
+      image: imageUri,
+      twitter: twitter,
+      telegram: telegram,
+      website: website,
+    }
 
     const uploadResponse = await fetch(uploadEndpoint, {
       method: 'POST',
-      body: formData,
+      body: JSON.stringify(metadata),
     });
     if (!uploadResponse.ok) {
       const errMsg = await uploadResponse.text();
@@ -99,7 +84,7 @@ export async function createAndBuyTokenViaPumpfun({
       throw new Error(uploadJson?.error || 'No metadataUri returned');
     }
 
-    const {metadataUri} = uploadJson;
+    const { metadataUri } = uploadJson;
     console.log('[createAndBuy] metadataUri =>', metadataUri);
 
     onStatusUpdate?.('Generating mint keypair...');
@@ -108,77 +93,60 @@ export async function createAndBuyTokenViaPumpfun({
 
     // "create" instructions
     onStatusUpdate?.('Preparing token creation...');
-    const createTx = await sdk.getCreateInstructions(
-      creatorPubkey,
-      tokenName,
-      tokenSymbol,
-      metadataUri,
-      mintKeypair,
-    );
+    const createIx = await pumpSdk.createInstruction(mint.publicKey, metadata.name, metadata.symbol, metadataUri, commissionWallet, creatorPubkey);
 
     // optional "buy" instructions
-    let buyTx = null;
+    let buyIx: TransactionInstruction[] | null = null;
+
     if (solAmount > 0) {
       onStatusUpdate?.('Preparing initial buy instructions...');
-      const globalAccount = await sdk.getGlobalAccount();
-      const buyAmount = globalAccount.getInitialBuyPrice(
-        BigInt(Math.floor(solAmount * 1e9)),
-      );
-      const buyAmountWithSlippage = calculateWithSlippageBuy(
-        BigInt(Math.floor(solAmount * 1e9)),
-        slippageBasisPoints,
-      );
 
-      buyTx = await sdk.getBuyInstructions(
-        creatorPubkey,
-        mintKeypair.publicKey,
-        globalAccount.feeRecipient,
-        buyAmount,
-        buyAmountWithSlippage,
-      );
+
+      const global = await pumpSdk.fetchGlobal();
+
+      const bondingCurve: BondingCurve = {
+        virtualTokenReserves: global.initialVirtualTokenReserves,
+        virtualSolReserves: global.initialVirtualSolReserves,
+        realTokenReserves: global.initialRealTokenReserves,
+        realSolReserves: new BN(0),
+        tokenTotalSupply: new BN(global.tokenTotalSupply),
+        complete: false,
+        creator: creatorPubkey,
+      }
+
+      const buyTokenAmount = getBuyTokenAmountFromSolAmount(global, bondingCurve, new BN(solAmount), true);
+
+      // global: Global, bondingCurveAccountInfo: AccountInfo<Buffer> | null, bondingCurve: BondingCurve, mint: PublicKey, user: PublicKey, amount: BN, solAmount: BN, slippage: number, newCoinCreator: PublicKey
+       buyIx = await pumpSdk.buyInstructions(global, null, bondingCurve, mint.publicKey, creatorPubkey, buyTokenAmount, new BN(solAmount), 1, commissionWallet);
     }
 
-    // Combine create + buy instructions
-    const combinedTx = createTx;
-    if (buyTx) {
-      console.log('buyTx =>', buyTx);
-      buyTx.instructions.forEach(ix => combinedTx.add(ix));
+    const {blockhash} = await provider.connection.getLatestBlockhash();
+
+    let msg : MessageV0;
+    if (buyIx) {
+      const messageV0 = new TransactionMessage({
+        payerKey: new PublicKey(userPublicKey),
+        recentBlockhash: blockhash,
+        instructions: [createIx, ...buyIx],
+      }).compileToV0Message()
+      msg = messageV0;
+    } else {
+      msg = new TransactionMessage({
+        payerKey: new PublicKey(userPublicKey),
+        recentBlockhash: blockhash,
+        instructions: [createIx],
+      }).compileToV0Message()
     }
-    
-    // Add 0.5% commission fee to the specified wallet
-    const commissionWallet = new PublicKey(COMMISSION_WALLET);
-    
-    // Calculate 0.5% of the solAmount as commission
-    const commissionPercentage = 0.005; // 0.5%
-    const commissionAmount = Math.floor(solAmount * LAMPORTS_PER_SOL * commissionPercentage);
-    
-    // Ensure minimum commission of 0.001 SOL and maximum of 0.1 SOL
-    const minCommission = 1_000_000; // 0.001 SOL in lamports
-    const maxCommission = 100_000_000; // 0.1 SOL in lamports
-    const finalCommissionAmount = Math.max(minCommission, Math.min(commissionAmount, maxCommission));
-    
-    console.log(`[createAndBuyTokenViaPumpfun] Adding ${commissionPercentage * 100}% commission (${finalCommissionAmount / LAMPORTS_PER_SOL} SOL) to:`, commissionWallet.toString());
-    
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: creatorPubkey,
-      toPubkey: commissionWallet,
-      lamports: finalCommissionAmount,
-    });
-    
-    combinedTx.add(transferIx);
-    
-    // Sign it with the mint keypair
-    onStatusUpdate?.('Getting latest blockhash...');
-    const blockhash = await provider.connection.getLatestBlockhash();
-    combinedTx.recentBlockhash = blockhash.blockhash;
-    combinedTx.feePayer = creatorPubkey;
-    combinedTx.partialSign(mintKeypair);
+
+    const tx = new VersionedTransaction(msg);
+    tx.sign([mintKeypair]);
+
 
     // Use the new transaction service
-    console.log('combinedTx =>', combinedTx);
+    console.log('msg =>', msg);
     onStatusUpdate?.('Sending transaction for approval...');
     const txSignature = await TransactionService.signAndSendTransaction(
-      {type: 'transaction', transaction: combinedTx},
+      { type: 'transaction', transaction: tx },
       solanaWallet, // Pass wallet directly - TransactionService will handle it
       {
         connection,
@@ -210,13 +178,7 @@ export async function buyTokenViaPumpfun({
   solAmount,
   solanaWallet,
   onStatusUpdate,
-}: {
-  buyerPublicKey: string;
-  tokenAddress: string;
-  solAmount: number;
-  solanaWallet: any;
-  onStatusUpdate?: (status: string) => void;
-}) {
+}: BuyTokenParams) {
   if (!solanaWallet) {
     throw new Error(
       'No Solana wallet found. Please connect your wallet first.',
@@ -284,7 +246,7 @@ export async function buyTokenViaPumpfun({
       // Send the transaction
       onStatusUpdate?.('Sending transaction for approval...');
       const txSignature = await TransactionService.signAndSendTransaction(
-        {type: 'base64', data: base64Tx},
+        { type: 'base64', data: base64Tx },
         solanaWallet,
         {
           connection,
@@ -333,7 +295,7 @@ export async function buyTokenViaPumpfun({
 
       onStatusUpdate?.('Sending transaction for approval...');
       const txSignature = await TransactionService.signAndSendTransaction(
-        {type: 'transaction', transaction: tx},
+        { type: 'transaction', transaction: tx },
         solanaWallet,
         {
           connection,
@@ -359,13 +321,7 @@ export async function sellTokenViaPumpfun({
   tokenAmount,
   solanaWallet,
   onStatusUpdate,
-}: {
-  sellerPublicKey: string;
-  tokenAddress: string;
-  tokenAmount: number;
-  solanaWallet: any;
-  onStatusUpdate?: (status: string) => void;
-}) {
+}: SellTokenParams) {
   if (!solanaWallet) {
     throw new Error(
       'No Solana wallet found. Please connect your wallet first.',
@@ -436,8 +392,7 @@ export async function sellTokenViaPumpfun({
 
       if (actualBalance < requestedAmount) {
         throw new Error(
-          `Not enough tokens to sell. You have ${
-            Number(actualBalance) / 10 ** tokenDecimals
+          `Not enough tokens to sell. You have ${Number(actualBalance) / 10 ** tokenDecimals
           } tokens available.`,
         );
       }
@@ -502,7 +457,7 @@ export async function sellTokenViaPumpfun({
       // Send the transaction
       onStatusUpdate?.('Sending transaction for approval...');
       const txSignature = await TransactionService.signAndSendTransaction(
-        {type: 'base64', data: base64Tx},
+        { type: 'base64', data: base64Tx },
         solanaWallet,
         {
           connection,
@@ -555,8 +510,7 @@ export async function sellTokenViaPumpfun({
 
         if (actualBalance < requestedAmount) {
           throw new Error(
-            `Not enough tokens to sell. You have ${
-              Number(actualBalance) / 10 ** tokenBalance.value.decimals
+            `Not enough tokens to sell. You have ${Number(actualBalance) / 10 ** tokenBalance.value.decimals
             } tokens available.`,
           );
         }
@@ -591,7 +545,7 @@ export async function sellTokenViaPumpfun({
         // Send the transaction
         onStatusUpdate?.('Sending transaction for approval...');
         const txSignature = await TransactionService.signAndSendTransaction(
-          {type: 'transaction', transaction: tx},
+          { type: 'transaction', transaction: tx },
           solanaWallet,
           {
             connection,

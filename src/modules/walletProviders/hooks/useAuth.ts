@@ -107,9 +107,20 @@ export function useAuth() {
 
     const loginWithApple = useCallback(async () => {
       try {
-        // Use direct OAuth login instead of handlePrivyLogin
-        const result = await loginWithOAuth({ provider: 'apple' });
+        console.log('[useAuth] Starting Apple login process...');
+        // Use direct OAuth login with proper error handling
+        const result = await loginWithOAuth({ 
+          provider: 'apple',
+          // Don't pass isLegacyAppleIosBehaviorEnabled to use native flow
+        });
+        
         console.log('[useAuth] Apple OAuth login result:', result);
+        
+        // Check if we have a valid authentication result before proceeding
+        if (!result) {
+          console.error('[useAuth] Apple authentication failed - no result returned');
+          throw new Error('Apple authentication failed to complete');
+        }
         
         console.log('[useAuth] Starting Solana wallet monitoring after successful login');
         
@@ -146,22 +157,49 @@ export function useAuth() {
         });
       } catch (error) {
         console.error('[useAuth] Apple login error:', error);
+        throw error; // Re-throw to allow component-level error handling
       }
     }, [loginWithOAuth, monitorSolanaWallet, solanaWallet, dispatch, navigation]);
 
     const loginWithEmail = useCallback(async () => {
-      await handlePrivyLogin({
-        loginMethod: 'email',
-        setStatusMessage: () => {},
-      });
-      await monitorSolanaWallet({
-        selectedProvider: 'privy',
-        setStatusMessage: () => {},
-        onWalletConnected: info => {
-          dispatch(loginSuccess({provider: 'privy', address: info.address}));
-          navigation.navigate('MainTabs');
-        },
-      });
+      try {
+        console.log('[useAuth] Starting email login process...');
+        if (handlePrivyLogin) {
+          await handlePrivyLogin({
+            loginMethod: 'email',
+            setStatusMessage: (msg) => {
+              console.log('[useAuth] Auth status:', msg);
+            }
+          });
+          
+          console.log('[useAuth] Email auth successful, starting wallet monitoring...');
+          await monitorSolanaWallet({
+            selectedProvider: 'privy',
+            setStatusMessage: (msg) => {
+              console.log('[useAuth] Wallet status:', msg);
+            },
+            onWalletConnected: info => {
+              console.log('[useAuth] Wallet connected successfully:', info);
+              // Set initial username from the wallet address when logging in
+              const initialUsername = info.address.substring(0, 6);
+              console.log('[useAuth] Setting initial username:', initialUsername);
+              
+              dispatch(loginSuccess({
+                provider: 'privy', 
+                address: info.address,
+                username: initialUsername
+              }));
+              
+              navigation.navigate('MainTabs');
+            },
+          });
+        } else {
+          throw new Error('Email login not available');
+        }
+      } catch (error) {
+        console.error('[useAuth] Email login error:', error);
+        throw error; // Re-throw to allow component-level error handling
+      }
     }, [handlePrivyLogin, monitorSolanaWallet, dispatch, navigation]);
 
     const logout = useCallback(async () => {

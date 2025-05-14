@@ -272,7 +272,7 @@ export const styles = StyleSheet.create({
   },
   errorBadgeText: {
     color: COLORS.white,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   errorTitle: {
@@ -297,6 +297,28 @@ export const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '600',
+  },
+  legalLinksContainer: {
+    marginTop: 24,
+    backgroundColor: COLORS.lightBackground,
+    borderRadius: 12,
+  },
+  legalLinkButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  legalLinkText: {
+    fontSize: 16,
+    color: COLORS.white,
+    fontFamily: 'Inter-Medium',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: COLORS.borderDarkColor,
+    marginHorizontal: 16,
   },
 });
 

@@ -3,7 +3,7 @@ import {
   TxVersion,
   parseTokenAccountResp,
 } from '@raydium-io/raydium-sdk-v2';
-import {Connection, Keypair, clusterApiUrl, Cluster} from '@solana/web3.js';
+import {Connection, Keypair, clusterApiUrl, Cluster, PublicKey} from '@solana/web3.js';
 import {TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID} from '@solana/spl-token';
 import bs58 from 'bs58';
 
@@ -12,7 +12,18 @@ import bs58 from 'bs58';
 // export const owner: Keypair = Keypair.fromSecretKey(
 //   bs58.decode(process.env.WALLET_PRIVATE_KEY || '<YOUR_WALLET_SECRET_KEY>'),
 // );
-export const owner: Keypair = Keypair.generate();
+// Use user's public key passed from the client
+export const getUserWallet = (publicKey: string): PublicKey => {
+  try {
+    return new PublicKey(publicKey);
+  } catch (error) {
+    console.error('[RaydiumConfig] Invalid user public key, using default');
+    // Fall back to a default public key only for development
+    return new PublicKey("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG");
+  }
+};
+// Remove the hardcoded owner and make it a function parameter
+// export const owner: PublicKey = new PublicKey("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG");
 
 // Use environment variable for RPC URL or fall back to default
 export const connection = new Connection(
@@ -29,7 +40,8 @@ const cluster: 'mainnet' | 'devnet' =
   process.env.SOLANA_CLUSTER === 'devnet' ? 'devnet' : 'mainnet';
 
 let raydium: Raydium | undefined;
-export const initSdk = async (params?: {loadToken?: boolean}) => {
+export const initSdk = async (userPublicKey?: string, params?: {loadToken?: boolean}) => {
+  const owner = userPublicKey ? getUserWallet(userPublicKey) : new PublicKey("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG");
   if (raydium) return raydium;
   if (connection.rpcEndpoint === clusterApiUrl('mainnet-beta'))
     console.warn(
@@ -66,17 +78,17 @@ export const initSdk = async (params?: {loadToken?: boolean}) => {
 };
 
 export const fetchTokenAccountData = async () => {
-  const solAccountResp = await connection.getAccountInfo(owner.publicKey);
+  const solAccountResp = await connection.getAccountInfo(getUserWallet("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG"));
   const tokenAccountResp = await connection.getTokenAccountsByOwner(
-    owner.publicKey,
+    getUserWallet("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG"),
     {programId: TOKEN_PROGRAM_ID},
   );
   const token2022Req = await connection.getTokenAccountsByOwner(
-    owner.publicKey,
+    getUserWallet("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG"),
     {programId: TOKEN_2022_PROGRAM_ID},
   );
   const tokenAccountData = parseTokenAccountResp({
-    owner: owner.publicKey,
+    owner: getUserWallet("87iu7KKDcZbghdgqJBbNFMFHFHCrRcBqbtXTcd1n3tzG"),
     solAccountResp,
     tokenAccountResp: {
       context: tokenAccountResp.context,
@@ -85,6 +97,3 @@ export const fetchTokenAccountData = async () => {
   });
   return tokenAccountData;
 };
-
-export const grpcUrl = process.env.GRPC_URL || '<YOUR_GRPC_URL>';
-export const grpcToken = process.env.GRPC_TOKEN || '<YOUR_GRPC_TOKEN>';

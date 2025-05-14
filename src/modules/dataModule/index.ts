@@ -26,10 +26,12 @@ export {
   DEFAULT_USDC_TOKEN,
   fetchTokenBalance,
   fetchTokenPrice,
+  fetchTokenMetadata,
+  ensureCompleteTokenInfo,
   estimateTokenUsdValue,
-  toBaseUnits,
-  fetchTokenMetadata as fetchTokenMetadataByAddress,
-  ensureCompleteTokenInfo
+  fetchTokenList,
+  searchTokens,
+  toBaseUnits
 } from './services/tokenService';
 
 // Export other services
@@ -51,6 +53,7 @@ export {
 export * from './hooks/useFetchTokens';
 export * from './hooks/useCoingecko';
 export * from './hooks/useTokenDetails';
+export { useTokenSearch } from './hooks/useTokenSearch';
 
 // Export utilities
 export * from './utils/tokenUtils';

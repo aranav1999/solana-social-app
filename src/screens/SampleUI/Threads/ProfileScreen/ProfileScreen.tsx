@@ -11,6 +11,7 @@ import { useFetchNFTs } from '@/modules/nft';
 import { useAppSelector } from '@/shared/hooks/useReduxHooks';
 import COLORS from '@/assets/colors';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/shared/navigation/RootNavigator';
 
 export default function ProfileScreen() {
   // Get user data from Redux
@@ -19,7 +20,7 @@ export default function ProfileScreen() {
   const storedDescription = useAppSelector(state => state.auth.description);
   const attachmentData = useAppSelector(state => state.auth.attachmentData || {});
 
-  const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Use the wallet hook to get the user's address
   const { address: userWallet } = useWallet();
@@ -81,6 +82,11 @@ export default function ProfileScreen() {
     navigation.goBack();
   }, [navigation]);
 
+  // Function to navigate to the delete account confirmation screen
+  const handleNavigateToDeleteConfirmation = useCallback(() => {
+    navigation.navigate('DeleteAccountConfirmationScreen');
+  }, [navigation]);
+
   // Refresh follower/following counts when the profile screen is focused
   useFocusEffect(
     React.useCallback(() => {
@@ -140,6 +146,7 @@ export default function ProfileScreen() {
             fetchNftsError={fetchNftsError}
             onGoBack={handleGoBack}
             isScreenLoading={false}
+            onDeleteAccountPress={handleNavigateToDeleteConfirmation}
           />
         )}
       </SafeAreaView>

@@ -54,6 +54,7 @@ export interface ProfileProps {
   containerStyle?: object;
   onGoBack?: () => void;
   isScreenLoading?: boolean;
+  onDeleteAccountPress?: () => void;
 }
 
 // Profile view component props

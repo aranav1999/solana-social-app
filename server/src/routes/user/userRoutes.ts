@@ -6,7 +6,7 @@
  * - Basic profile fetch/update (username, attach coin, follow/unfollow, etc.)
  */
 
-import {Router} from 'express';
+import {Router, Request, Response, NextFunction} from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import fs from 'fs';
@@ -15,6 +15,13 @@ import os from 'os';
 import knex from '../../db/knex';
 import {uploadToIpfs} from '../../utils/ipfs';
 // import fetch from 'node-fetch';
+
+// Assuming userController and requireAuth are structured like this
+// import * as userController from '../../controllers/userController'; // This line is removed
+// import { requireAuth } from '../../middleware/requireAuth'; // Assuming path - REMOVED
+
+// Import the new user service function
+import { deleteUserAccount as deleteUserAccountService } from '../../service/userService'; 
 
 const profileImageRouter = Router();
 const upload = multer({storage: multer.memoryStorage()});
@@ -526,5 +533,42 @@ profileImageRouter.post('/updateDescription', async (req: any, res: any) => {
     return res.status(500).json({success: false, error: error.message});
   }
 });
+
+/**
+ * ------------------------------------------
+ *  NEW: Delete user account
+ *  WARNING: Authentication removed for now. userId must be passed in body.
+ *  THIS IS INSECURE FOR PRODUCTION.
+ * ------------------------------------------
+ */
+profileImageRouter.delete(
+  '/delete-account',
+  // requireAuth, // Middleware REMOVED
+  async (req: any, res: any, next: NextFunction) => {
+    console.log(`[Route /delete-account] Received request. Body:`, req.body);
+    try {
+      const { userId } = req.body; // userId now expected from request body
+      
+      console.log(`[Route /delete-account] Extracted userId: ${userId}`);
+
+      if (!userId) {
+        console.error('[Route /delete-account] Error: userId is missing from request body.');
+        return res.status(400).json({ success: false, error: 'userId is required in the request body.' });
+      }
+
+      console.log(`[Route /delete-account] Calling deleteUserAccountService for userId: ${userId}`);
+      await deleteUserAccountService(userId);
+      
+      console.log(`[Route /delete-account] Successfully deleted account for userId: ${userId}`);
+      return res.status(200).json({ success: true, message: 'Account deleted successfully.' });
+    } catch (error: any) {
+      console.error('[Delete Account Route Error]', error);
+      if (error.message.includes('User not found')) {
+        return res.status(404).json({ success: false, error: error.message });
+      }
+      return res.status(500).json({ success: false, error: error.message || 'Failed to delete account.' });
+    }
+  },
+);
 
 export default profileImageRouter;

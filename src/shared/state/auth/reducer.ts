@@ -202,6 +202,51 @@ export const removeAttachedCoin = createAsyncThunk(
   },
 );
 
+/**
+ * Delete the current user's account.
+ * The server will expect userId in the body since requireAuth was temporarily removed.
+ * IMPORTANT: Proper authentication should be reinstated on the server for this endpoint.
+ */
+export const deleteAccountAction = createAsyncThunk<
+  { success: boolean; message: string }, // Expected success response type
+  string, // Argument type: userId
+  { rejectValue: string } // Type for thunkAPI.rejectWithValue
+>(
+  'auth/deleteAccount',
+  async (userId: string, thunkAPI) => {
+    if (!userId) {
+      return thunkAPI.rejectWithValue('User ID is required to delete account.');
+    }
+    try {
+      console.log(`[AuthThunk deleteAccountAction] Attempting to delete account for userId: ${userId}`);
+      const response = await fetch(
+        `${SERVER_BASE_URL}/api/profile/delete-account`, // Corrected API path
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          // Since requireAuth is removed, server expects userId in body.
+          // This is insecure and needs to be addressed by reinstating auth.
+          body: JSON.stringify({ userId }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        console.error('[AuthThunk deleteAccountAction] API error:', data.error || `HTTP error! status: ${response.status}`);
+        return thunkAPI.rejectWithValue(
+          data.error || `Failed to delete account. Status: ${response.status}`,
+        );
+      }
+      console.log('[AuthThunk deleteAccountAction] Account deletion successful:', data);
+      return data; // Should be { success: true, message: '...' }
+    } catch (error: any) {
+      console.error('[AuthThunk deleteAccountAction] Network or other error:', error);
+      return thunkAPI.rejectWithValue(
+        error.message || 'Network error during account deletion.',
+      );
+    }
+  },
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -306,6 +351,21 @@ const authSlice = createSlice({
           delete state.attachmentData.coin;
         }
       }
+    });
+
+    builder.addCase(deleteAccountAction.pending, (state) => {
+      // Optional: Handle pending state, e.g., set a global loading flag if needed
+      console.log('[AuthSlice] deleteAccountAction pending...');
+    });
+    builder.addCase(deleteAccountAction.fulfilled, (state, action) => {
+      // On successful account deletion from the server, the client should logout.
+      // The logoutSuccess reducer (called by useAuth().logout()) will clear user state.
+      // No direct state changes here needed if logout handles it.
+      console.log('[AuthSlice] deleteAccountAction fulfilled:', action.payload.message);
+    });
+    builder.addCase(deleteAccountAction.rejected, (state, action) => {
+      // Optional: Handle rejected state, e.g., display a global error
+      console.error('[AuthSlice] deleteAccountAction rejected:', action.payload || action.error.message);
     });
   },
 });
