@@ -57,20 +57,4 @@ subprojects {
             }
         }
     }
-
-    // 2) If it's an Android library project
-    plugins.withId("com.android.library") {
-        def androidExt = extensions.findByType(com.android.build.gradle.LibraryExtension)
-        if (androidExt != null) {
-            androidExt.compileOptions {
-                sourceCompatibility JavaVersion.VERSION_17
-                targetCompatibility JavaVersion.VERSION_17
-            }
-        }
-        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
-        }
-    }
 }

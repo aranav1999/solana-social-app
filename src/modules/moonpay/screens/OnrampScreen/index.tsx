@@ -39,7 +39,7 @@ function OnrampScreen() {
   
   // Calculate widget height (60% of screen height on portrait, 80% on landscape)
   const isPortrait = height > width;
-  const widgetHeight = Math.round(height * (isPortrait ? 0.58 : 0.7));
+  const widgetHeight = Math.round(height * (isPortrait ? 0.7 : 0.7));
 
   // Fade in animation for the content
   useEffect(() => {
@@ -100,6 +100,19 @@ function OnrampScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContainer}
         >
+          {/* MoonPay Widget */}
+          <View style={styles.widgetWrapper}>
+            <MoonPayWidget
+              key={`moonpay-widget-${retryCount}`}
+              apiKey={API_KEY}
+              environment="sandbox"
+              onOpen={handleWidgetOpen}
+              onError={handleWidgetError}
+              onRetry={handleRetry}
+              height={widgetHeight}
+            />
+          </View>
+          
           {/* Information Card */}
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>Buy Crypto with MoonPay</Text>
@@ -155,19 +168,6 @@ function OnrampScreen() {
                 </View>
               </View>
             </View>
-          </View>
-          
-          {/* MoonPay Widget */}
-          <View style={styles.widgetWrapper}>
-            <MoonPayWidget
-              key={`moonpay-widget-${retryCount}`}
-              apiKey={API_KEY}
-              environment="sandbox"
-              onOpen={handleWidgetOpen}
-              onError={handleWidgetError}
-              onRetry={handleRetry}
-              height={widgetHeight}
-            />
           </View>
         </ScrollView>
       </Animated.View>

@@ -139,9 +139,10 @@ export default function FeedScreen() {
   if (!profileStable || areInitialPostsLoading) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar backgroundColor={COLORS.background} barStyle="light-content" />
         <View style={[
           Platform.OS === 'android' && {
-            paddingTop: Math.max(insets.top, 30)
+            paddingTop: insets.top
           }
         ]}>
           <FlatList
@@ -169,9 +170,10 @@ export default function FeedScreen() {
       style={[
         styles.container,
         Platform.OS === 'android' && {
-          paddingTop: Math.max(insets.top, 30)
+          paddingTop: insets.top
         }
       ]}>
+      <StatusBar backgroundColor={COLORS.background} barStyle="light-content" />
       {renderCustomHeader()}
       <Thread
         rootPosts={feedPosts} // Passing all posts (including replies)

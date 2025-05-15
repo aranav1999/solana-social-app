@@ -42,6 +42,7 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
     marginTop: 8,
+    marginBottom: 24,
   },
   walletInfoContainer: {
     backgroundColor: COLORS.darkerBackground,

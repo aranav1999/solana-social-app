@@ -1,15 +1,16 @@
 // FILE: server/src/controllers/UploadMetadataController.ts
 
 import {Request, Response} from 'express';
-import {uploadToIpfs} from '../utils/ipfs';
+import {uploadToPinata} from '../utils/ipfs';
 
 export async function UploadMetadataController(
   req: Request,
   res: Response,
 ): Promise<void> {
   try {
-    const {tokenName, tokenSymbol, description, twitter, telegram, website} =
+    const {tokenName, tokenSymbol, description, twitter, telegram, website, createdOn} =
       req.body;
+    console.log('[UploadMetadataController] req.body =>', req.body);
     if (!tokenName || !tokenSymbol || !description) {
       res.status(400).json({
         success: false,
@@ -17,21 +18,46 @@ export async function UploadMetadataController(
       });
       return;
     }
-    if (!req.file) {
-      res.status(400).json({
-        success: false,
-        error: 'Image file is required. (Form field name: "image")',
-      });
-      return;
+    
+    // Check for the image file - it could be in req.file (from multer) or in req.body.image
+    // (from the direct object upload used in mobile apps)
+    let imageBuffer;
+    
+    if (req.file) {
+      // Standard file upload via multer
+      imageBuffer = req.file.buffer;
+    } else if (req.body.image) {
+      // Handle the case where image is sent as an object with uri property
+      // This is common in React Native when using FormData
+      console.log('[UploadMetadataController] Image object received:', 
+        typeof req.body.image === 'object' ? 'object' : 'string');
+        
+      try {
+        // If the image is a JSON string (which can happen with FormData), parse it
+        const imageData = typeof req.body.image === 'string' 
+          ? JSON.parse(req.body.image) 
+          : req.body.image;
+          
+        // Fetch the image from the URI
+        const imageUri = imageData.uri;
+        console.log('[UploadMetadataController] Fetching image from URI:', imageUri);
+        
+        const imageResponse = await fetch(imageUri);
+        imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      } catch (imageError: any) {
+        console.error('[UploadMetadataController] Error processing image:', imageError);
+        res.status(400).json({
+          success: false,
+          error: `Failed to process image: ${imageError.message}`,
+        });
+        return;
+      }
     }
-
-    // Upload image and metadata to IPFS via Pump.fun
-    // Use buffer instead of path since we're using memory storage
-    const imageBuffer = req.file.buffer;
+    
     if (!imageBuffer) {
       res.status(400).json({
         success: false,
-        error: 'Image buffer is missing from the uploaded file',
+        error: 'Image is required. Please provide either a file upload or a valid image URI.',
       });
       return;
     }
@@ -41,11 +67,14 @@ export async function UploadMetadataController(
       symbol: tokenSymbol,
       description,
       showName: true,
+      createdOn: createdOn || '',
       twitter: twitter || '',
       telegram: telegram || '',
       website: website || '',
     };
-    const metadataUri = await uploadToIpfs(imageBuffer, metadataObj);
+    
+    console.log('[UploadMetadataController] Uploading to Pinata IPFS...');
+    const metadataUri = await uploadToPinata(imageBuffer, metadataObj);
 
     res.json({
       success: true,

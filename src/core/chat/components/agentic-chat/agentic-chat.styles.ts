@@ -9,13 +9,16 @@ export const agenticChatStyles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
+    position: 'relative',
   },
   
   // Message list container
   messageListContainer: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 80, // Space for composer
+    paddingBottom: 100, // Increase padding to ensure no content is hidden behind composer
+    minHeight: '100%', 
+    flexGrow: 1,
   },
   
   // Loading indicator styles
@@ -193,11 +196,17 @@ export const agenticChatStyles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'rgba(18, 18, 18, 0.5)',
-    marginBottom: 8,
+    backgroundColor: COLORS.background, // Use solid background color instead of semi-transparent
+    marginBottom: 0,
     alignItems: 'flex-end',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10, // Higher z-index to ensure it's above all content
+    elevation: 5, // Add elevation for Android
   },
   input: {
     flex: 1,

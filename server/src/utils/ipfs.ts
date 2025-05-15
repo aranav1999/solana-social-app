@@ -144,12 +144,12 @@ export async function uploadToPinata(
       name: metadata.name || '',
       symbol: metadata.symbol || '',
       description: metadata.description || '',
+      image: imageUri,
       showName: metadata.showName !== undefined ? metadata.showName : true,
+      createdOn: metadata.createdOn || 'https://raydium.io/',
       twitter: metadata.twitter || '',
       telegram: metadata.telegram || '',
       website: metadata.website || '',
-      createdOn: metadata.createdOn || 'https://raydium.io/',
-      image: imageUri,
     };
     
     console.log('Uploading metadata to Pinata...');

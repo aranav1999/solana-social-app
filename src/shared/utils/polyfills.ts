@@ -8,6 +8,10 @@ declare global {
     WritableStream: any;
     TransformStream: any;
   }
+  // Add EventEmitter to Process interface
+  interface Process {
+    EventEmitter?: any;
+  }
 }
 
 // Polyfill for structuredClone
@@ -75,11 +79,19 @@ if (typeof global.TextEncoder === 'undefined') {
   console.log('Polyfilled TextEncoder and TextDecoder');
 }
 
-// Ensure Buffer is available globally (if not already)
-if (typeof global.Buffer === 'undefined') {
-  global.Buffer = require('buffer').Buffer;
-  console.log('Polyfilled Buffer');
-}
+// Buffer polyfill with fixes for Anchor and readUIntLE methods
+import { Buffer } from "buffer";
+global.Buffer = Buffer;
+
+// Fix for Buffer.subarray to properly maintain prototype chain for methods like readUIntLE
+Buffer.prototype.subarray = function subarray(
+  begin: number | undefined,
+  end: number | undefined
+) {
+  const result = Uint8Array.prototype.subarray.apply(this, [begin, end]);
+  Object.setPrototypeOf(result, Buffer.prototype); // Explicitly add the Buffer prototype (adds readUIntLE!)
+  return result as unknown as Buffer; // Cast through unknown to Buffer to satisfy TypeScript
+};
 
 // Add EventEmitter polyfill
 // Ensure global.process exists before attempting to attach EventEmitter
@@ -87,7 +99,9 @@ if (typeof global.process === 'undefined') {
   console.warn('[Polyfills] global.process is undefined, attempting to initialize.');
   global.process = require('process'); // Ensure process is polyfilled
   if (typeof global.process.env === 'undefined') {
-    global.process.env = { NODE_ENV: __DEV__ ? 'development' : 'production' } as any;
+    // Check if __DEV__ exists before using it
+    const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+    global.process.env = { NODE_ENV: isDev ? 'development' : 'production' } as any;
   }
    if (typeof global.process.nextTick === 'undefined') {
     global.process.nextTick = setImmediate;

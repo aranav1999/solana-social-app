@@ -1,11 +1,11 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { 
-  View, 
-  FlatList, 
-  KeyboardAvoidingView, 
-  Platform, 
-  TouchableWithoutFeedback, 
-  Keyboard, 
+import {
+  View,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
   ImageSourcePropType,
   TextInput,
   TouchableOpacity,
@@ -59,11 +59,11 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
 }) => {
   // Reference to the FlatList component for scrolling
   const flatListRef = useRef<FlatList>(null);
-  
+
   // Local input state if not provided
   const [localInputValue, setLocalInputValue] = useState('');
   const inputText = setInputValue ? inputValue : localInputValue;
-  
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -135,7 +135,7 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
         flatListRef.current.scrollToEnd({ animated: true });
       }
     }, 100);
-    
+
     return () => clearTimeout(timer);
   }, [displayMessages]);
 
@@ -147,9 +147,9 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
   // Handle sending messages
   const handleSendMessage = () => {
     if (inputText.trim().length === 0 || isLoading) return;
-    
+
     onSendMessage(inputText);
-    
+
     if (!setInputValue) {
       setLocalInputValue('');
     }
@@ -190,7 +190,7 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
 
   // Empty list component
   const EmptyListComponent = () => (
-    <Animated.View 
+    <Animated.View
       style={[
         styles.emptyContainer,
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
@@ -212,15 +212,16 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
       style={styles.container}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <View style={styles.container}>
+      <View style={styles.container}>
+        {/* Message list - takes up entire container space */}
+        <View style={{ flex: 1, width: '100%' }}>
           <FlatList
             ref={flatListRef}
             data={displayMessages}
             renderItem={renderMessageItem}
             keyExtractor={item => item.id}
             contentContainerStyle={styles.messageListContainer}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={true}
             initialNumToRender={10}
             removeClippedSubviews={Platform.OS === 'android'}
             maxToRenderPerBatch={10}
@@ -236,8 +237,12 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
               }
             }}
             ListEmptyComponent={EmptyListComponent}
+            scrollEnabled={true}
           />
+        </View>
 
+        {/* Input container positioned absolutely */}
+        <TouchableWithoutFeedback onPress={dismissKeyboard}>
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -249,7 +254,7 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
               maxLength={1000}
               editable={!isLoading}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.sendButton,
                 (inputText.trim().length === 0 || isLoading) && styles.disabledButton
@@ -259,11 +264,11 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
             >
               <LinearGradient
                 colors={[COLORS.brandBlue, '#2AABB3'] as const}
-                style={{ 
-                  flex: 1, 
-                  justifyContent: 'center', 
+                style={{
+                  flex: 1,
+                  justifyContent: 'center',
                   alignItems: 'center',
-                  borderRadius: 20 
+                  borderRadius: 20
                 }}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -272,8 +277,8 @@ const AgenticChatContainer: React.FC<AgenticChatContainerProps> = ({
               </LinearGradient>
             </TouchableOpacity>
           </View>
-        </View>
-      </TouchableWithoutFeedback>
+        </TouchableWithoutFeedback>
+      </View>
     </KeyboardAvoidingView>
   );
 };

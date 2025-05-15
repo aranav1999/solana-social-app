@@ -71,9 +71,27 @@ export async function createAndBuyTokenViaPumpfun({
       website: website,
     }
 
+    // Create FormData object
+    const formData = new FormData();
+    formData.append('tokenName', tokenName);
+    formData.append('tokenSymbol', tokenSymbol);
+    formData.append('description', description);
+    formData.append('twitter', twitter || '');
+    formData.append('telegram', telegram || '');
+    formData.append('website', website || '');
+    formData.append('createdOn', 'https://www.solanaappkit.com');
+
+    // Instead of doing a fetch and blob conversion which may not work in all environments,
+    // append the image directly as an object with uri, name, and type properties
+    formData.append('image', {
+      uri: imageUri,
+      name: 'token.png',
+      type: 'image/png',
+    } as any);
+
     const uploadResponse = await fetch(uploadEndpoint, {
       method: 'POST',
-      body: JSON.stringify(metadata),
+      body: formData,
     });
     if (!uploadResponse.ok) {
       const errMsg = await uploadResponse.text();
@@ -88,9 +106,6 @@ export async function createAndBuyTokenViaPumpfun({
     console.log('[createAndBuy] metadataUri =>', metadataUri);
 
     onStatusUpdate?.('Generating mint keypair...');
-    const mintKeypair = Keypair.generate();
-    console.log('[createAndBuy] New Mint =>', mintKeypair.publicKey.toBase58());
-
     // "create" instructions
     onStatusUpdate?.('Preparing token creation...');
     const createIx = await pumpSdk.createInstruction(mint.publicKey, metadata.name, metadata.symbol, metadataUri, commissionWallet, creatorPubkey);
@@ -114,10 +129,12 @@ export async function createAndBuyTokenViaPumpfun({
         creator: creatorPubkey,
       }
 
-      const buyTokenAmount = getBuyTokenAmountFromSolAmount(global, bondingCurve, new BN(solAmount), true);
+      // Convert solAmount to lamports before creating BN
+      const solAmountLamports = Math.floor(solAmount * LAMPORTS_PER_SOL);
+      const buyTokenAmount = getBuyTokenAmountFromSolAmount(global, bondingCurve, new BN(solAmountLamports), true);
 
       // global: Global, bondingCurveAccountInfo: AccountInfo<Buffer> | null, bondingCurve: BondingCurve, mint: PublicKey, user: PublicKey, amount: BN, solAmount: BN, slippage: number, newCoinCreator: PublicKey
-       buyIx = await pumpSdk.buyInstructions(global, null, bondingCurve, mint.publicKey, creatorPubkey, buyTokenAmount, new BN(solAmount), 1, commissionWallet);
+       buyIx = await pumpSdk.buyInstructions(global, null, bondingCurve, mint.publicKey, creatorPubkey, buyTokenAmount, new BN(solAmountLamports), 1, commissionWallet);
     }
 
     const {blockhash} = await provider.connection.getLatestBlockhash();
@@ -139,7 +156,7 @@ export async function createAndBuyTokenViaPumpfun({
     }
 
     const tx = new VersionedTransaction(msg);
-    tx.sign([mintKeypair]);
+    tx.sign([mint]);
 
 
     // Use the new transaction service
@@ -160,7 +177,7 @@ export async function createAndBuyTokenViaPumpfun({
 
     onStatusUpdate?.('Token launched successfully!');
     return {
-      mint: mintKeypair.publicKey.toString(),
+      mint: mint.publicKey.toString(),
       txSignature,
     };
   } catch (err: any) {
